@@ -1,0 +1,41 @@
+# school-os/.gitignore
+
+# ── Environment files (NEVER commit these) ──
+.env
+*.env
+backend/.env
+frontend/.env.local
+
+# ── Python ──────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+
+# ── Node / Next.js ──────────────────────────
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+npm-debug.log*
+
+# ── Docker ──────────────────────────────────
+*.log
+
+# ── VS Code ──────────────────────────────────
+.vscode/settings.json
+
+# ── Database ────────────────────────────────
+*.sqlite
+*.db
+
+# ── OS files ────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
