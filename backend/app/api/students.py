@@ -1,0 +1,159 @@
+# backend/app/api/students.py
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from typing import List, Optional
+
+from app.core.database import get_db
+from app.core.security import get_current_school_id, TeacherOrAdmin, AnyUser
+from app.models.student import Student
+from app.models.user import User, UserRole
+from app.schemas.student import StudentCreate, StudentUpdate, StudentResponse
+from app.services.cache_service import (
+    cache_get, cache_set, cache_invalidate, make_cache_key, CACHE_TTL
+)
+
+router = APIRouter(prefix="/api/students", tags=["Students"])
+
+
+@router.get("", response_model=List[StudentResponse])
+async def list_students(
+    class_id: Optional[int] = Query(None, description="Filter by class"),
+    is_active: Optional[bool] = Query(True, description="Filter active/inactive"),
+    db: Session = Depends(get_db),
+    school_id: int = Depends(get_current_school_id),
+    _=AnyUser
+):
+    """
+    Get all students for the logged-in user's school.
+    
+    ALWAYS filters by school_id — a teacher from school A
+    can never see students from school B.
+    Results are cached in Redis for 5 minutes.
+    """
+    # Build cache key that includes all filter params
+    cache_key = make_cache_key("students", school_id, class_id or "all", is_active)
+
+    # Try cache first
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    # Cache miss — hit the database
+    query = db.query(Student).filter(Student.school_id == school_id)
+
+    if class_id is not None:
+        query = query.filter(Student.class_id == class_id)
+    if is_active is not None:
+        query = query.filter(Student.is_active == is_active)
+
+    students = query.order_by(Student.first_name).all()
+
+    # Serialise to dict for caching (Pydantic model → dict)
+    result = [StudentResponse.from_orm(s).model_dump() for s in students]
+
+    # Store in cache
+    await cache_set(cache_key, result, CACHE_TTL["student_list"])
+
+    return result
+
+
+@router.get("/{student_id}", response_model=StudentResponse)
+async def get_student(
+    student_id: int,
+    db: Session = Depends(get_db),
+    school_id: int = Depends(get_current_school_id),
+    current_user: User = Depends(get_current_user_dep := __import__(
+        'app.core.security', fromlist=['get_current_user']
+    ).get_current_user)
+):
+    """Get a single student by ID."""
+    # Parents can only see their own child
+    student = db.query(Student).filter(
+        Student.id == student_id,
+        Student.school_id == school_id
+    ).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # Extra check: parents can only access their own child's data
+    if current_user.role == UserRole.parent and student.parent_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return student
+
+
+@router.post("", response_model=StudentResponse, status_code=201)
+async def create_student(
+    payload: StudentCreate,
+    db: Session = Depends(get_db),
+    school_id: int = Depends(get_current_school_id),
+    _=TeacherOrAdmin
+):
+    """Create a new student. Only teachers and admins can do this."""
+    student = Student(school_id=school_id, **payload.model_dump())
+    db.add(student)
+    db.commit()
+    db.refresh(student)
+
+    # Invalidate cached student lists for this school
+    await cache_invalidate(f"students:{school_id}:*")
+
+    return student
+
+
+@router.put("/{student_id}", response_model=StudentResponse)
+async def update_student(
+    student_id: int,
+    payload: StudentUpdate,
+    db: Session = Depends(get_db),
+    school_id: int = Depends(get_current_school_id),
+    _=TeacherOrAdmin
+):
+    """Update a student's details."""
+    student = db.query(Student).filter(
+        Student.id == student_id,
+        Student.school_id == school_id
+    ).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # Only update fields that were actually sent (exclude_unset=True)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(student, field, value)
+
+    db.commit()
+    db.refresh(student)
+
+    # Clear all cached student data for this school
+    await cache_invalidate(f"students:{school_id}:*")
+
+    return student
+
+
+@router.delete("/{student_id}")
+async def deactivate_student(
+    student_id: int,
+    db: Session = Depends(get_db),
+    school_id: int = Depends(get_current_school_id),
+    _=Depends(__import__('app.core.security', fromlist=['require_role'])
+              .require_role(__import__('app.models.user', fromlist=['UserRole']).UserRole.admin))
+):
+    """
+    Deactivate a student (soft delete — data is kept, student is hidden).
+    Only admins can do this.
+    """
+    student = db.query(Student).filter(
+        Student.id == student_id,
+        Student.school_id == school_id
+    ).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    student.is_active = False
+    db.commit()
+    await cache_invalidate(f"students:{school_id}:*")
+    return {"message": f"Student {student.full_name} deactivated successfully"}

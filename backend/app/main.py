@@ -1,17 +1,63 @@
+# # backend/app/main.py    for starting the FastAPI server. All API endpoints are registered here.
+
+# from fastapi import FastAPI
+
+# app = FastAPI(
+#     title="School OS API",
+#     description="AI-Powered School Operating System",
+#     version="1.0.0"
+# )
+
+# @app.get("/")
+# def root():
+#     return {"status": "School OS API is running", "version": "1.0.0"}
+
+# @app.get("/health")
+# def health():
+#     return {"status": "healthy"}
 # backend/app/main.py
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import auth, students, attendance, marks, fees, notifications, agent_logs
 
 app = FastAPI(
     title="School OS API",
-    description="AI-Powered School Operating System",
-    version="1.0.0"
+    description="AI-Powered School Operating System — Backend API",
+    version="2.0.0",
+    docs_url="/docs",      # Swagger UI
+    redoc_url="/redoc",    # ReDoc UI
 )
 
-@app.get("/")
-def root():
-    return {"status": "School OS API is running", "version": "1.0.0"}
+# ── CORS — allow frontend (localhost:3000) to call the API ──────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",   # Next.js dev server
+        "http://localhost:3001",
+        "https://yourdomain.com",  # production domain
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/health")
+# ── Register all routers ────────────────────────────────────────────
+app.include_router(auth.router)
+app.include_router(students.router)
+app.include_router(attendance.router)
+app.include_router(marks.router)
+app.include_router(fees.router)
+app.include_router(notifications.router)
+app.include_router(agent_logs.router)
+
+
+# ── Health check endpoints ──────────────────────────────────────────
+@app.get("/", tags=["Health"])
+def root():
+    return {"status": "School OS API running", "version": "2.0.0", "docs": "/docs"}
+
+@app.get("/health", tags=["Health"])
 def health():
     return {"status": "healthy"}
