@@ -1,6 +1,7 @@
 # backend/app/api/attendance.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from redis import asyncio
 from sqlalchemy.orm import Session
 from datetime import date
 from typing import List, Optional
@@ -72,19 +73,36 @@ async def mark_attendance(
     # Invalidate attendance cache
     await cache_invalidate(f"attendance:{school_id}:*")
 
-    # Publish event for Attendance Agent (Phase 4)
-    # We import lazily so Phase 3 works even before Phase 4 is built
-    try:
-        from app.events.publisher import publish_event
-        import asyncio
-        asyncio.create_task(publish_event("attendance.marked", {
+    # # Publish event for Attendance Agent (Phase 4)
+    # # We import lazily so Phase 3 works even before Phase 4 is built
+    # try:
+    #     from app.events.publisher import publish_event
+    #     import asyncio
+    #     asyncio.create_task(publish_event("attendance.marked", {
+    #         "school_id":  school_id,
+    #         "student_id": payload.student_id,
+    #         "date":       str(payload.date),
+    #         "status":     payload.status.value,
+    #     }))
+    # except Exception:
+    #     pass  # event publishing is best-effort — don't fail the API call
+
+    # return record
+    # backend/app/api/attendance.py
+# Replace the try/except event block in mark_attendance() with this:
+
+    from app.events.publisher import publish_event, Events
+
+    asyncio.create_task(
+        publish_event(Events.ATTENDANCE_MARKED, {
             "school_id":  school_id,
             "student_id": payload.student_id,
+            "class_id":   payload.class_id,
             "date":       str(payload.date),
             "status":     payload.status.value,
-        }))
-    except Exception:
-        pass  # event publishing is best-effort — don't fail the API call
+            "marked_by":  current_user.id,
+        })
+    )
 
     return record
 

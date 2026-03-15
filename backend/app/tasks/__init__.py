@@ -17,3 +17,6 @@ celery_app.conf.update(
     timezone="Asia/Kolkata",
     enable_utc=True,
 )
+
+# THIS IS CRUCIAL — ensures tasks are loaded
+from app.tasks import agent_tasks

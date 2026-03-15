@@ -17,10 +17,19 @@
 #     return {"status": "healthy"}
 # backend/app/main.py
 
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, students, attendance, marks, fees, notifications, agent_logs
+# backend/app/main.py  — updated imports and router registration
+
+from app.api import (
+    auth, students, attendance, marks,
+    fees, notifications, agent_logs,
+    incidents, leads                   # ← add these two
+)
+
+
 
 app = FastAPI(
     title="School OS API",
@@ -51,6 +60,9 @@ app.include_router(marks.router)
 app.include_router(fees.router)
 app.include_router(notifications.router)
 app.include_router(agent_logs.router)
+# add these two lines alongside the other include_router calls:
+app.include_router(incidents.router)
+app.include_router(leads.router)
 
 
 # ── Health check endpoints ──────────────────────────────────────────

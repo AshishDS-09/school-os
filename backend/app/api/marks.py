@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from datetime import date
+import asyncio
 from typing import List, Optional
 from pydantic import BaseModel
 
@@ -63,19 +64,43 @@ async def enter_marks(
     await cache_invalidate(f"marks:{school_id}:{payload.student_id}:*")
 
     # Publish event → Academic Agent runs immediately (Phase 4+)
-    try:
-        from app.events.publisher import publish_event
-        import asyncio
-        asyncio.create_task(publish_event("marks.entered", {
+    # try:
+    #     from app.events.publisher import publish_event
+    #     import asyncio
+    #     asyncio.create_task(publish_event("marks.entered", {
+    #         "school_id":  school_id,
+    #         "student_id": payload.student_id,
+    #         "subject":    payload.subject,
+    #         "score":      payload.score,
+    #         "max_score":  payload.max_score,
+    #         "percentage": record.percentage,
+    #     }))
+    # except Exception:
+    #     pass
+
+    # return record
+    # backend/app/api/marks.py
+    # Replace the try/except event block at the bottom of enter_marks() with this:
+
+    # ── Publish event AFTER successful DB write ──────────────────
+    # Import here so Phase 3 still works if subscriber isn't running yet
+    from app.events.publisher import publish_event, Events
+
+    # asyncio.create_task runs publish_event in the background
+    # The API response returns immediately — no waiting for Redis
+    asyncio.create_task(
+        publish_event(Events.MARKS_ENTERED, {
             "school_id":  school_id,
             "student_id": payload.student_id,
+            "class_id":   payload.class_id,
             "subject":    payload.subject,
+            "exam_type":  payload.exam_type.value,
             "score":      payload.score,
             "max_score":  payload.max_score,
             "percentage": record.percentage,
-        }))
-    except Exception:
-        pass
+            "entered_by": current_user.id,
+        })
+    )
 
     return record
 
