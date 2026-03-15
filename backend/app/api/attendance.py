@@ -1,7 +1,7 @@
 # backend/app/api/attendance.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from redis import asyncio
+import asyncio
 from sqlalchemy.orm import Session
 from datetime import date
 from typing import List, Optional
