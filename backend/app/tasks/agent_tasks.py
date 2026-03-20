@@ -130,6 +130,8 @@ import logging
 
 from app.tasks import celery_app
 from celery.schedules import crontab
+# ADD this import at the top:
+from app.tasks.notification_tasks import flush_notification_queue  # noqa: F401 — imported but not used directly in this file
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +144,10 @@ logger = logging.getLogger(__name__)
 def run_academic_agent_for_student(self, student_id: int, school_id: int):
     """Triggered by marks.entered event."""
     try:
+        logger.info(
+            f"[AcademicAgent] Starting for school_id={school_id} "
+            f"student_id={student_id}"
+        )
         from app.agents.academic_agent import AcademicPerformanceAgent
         agent = AcademicPerformanceAgent(school_id=school_id, student_id=student_id)
         result = asyncio.run(agent.run())
@@ -284,10 +290,44 @@ def run_fee_agent_all_schools():
         db.close()
 
 
-# ── Beat schedule ────────────────────────────────────────────────────
+# # ── Beat schedule ────────────────────────────────────────────────────
+# celery_app.conf.beat_schedule = {
+#     "academic-nightly":   {"task": "run_academic_agent_all_schools",  "schedule": crontab(hour=23, minute=0)},
+#     "attendance-evening": {"task": "run_attendance_agent_all_schools", "schedule": crontab(hour=18, minute=0)},
+#     "fee-morning":        {"task": "run_fee_agent_all_schools",        "schedule": crontab(hour=8,  minute=0)},
+# }
+# celery_app.conf.update(include=["app.tasks.agent_tasks"])
+
+# backend/app/tasks/agent_tasks.py
+
+
+# UPDATE celery_app.conf.beat_schedule — add the flush entry:
 celery_app.conf.beat_schedule = {
-    "academic-nightly":   {"task": "run_academic_agent_all_schools",  "schedule": crontab(hour=23, minute=0)},
-    "attendance-evening": {"task": "run_attendance_agent_all_schools", "schedule": crontab(hour=18, minute=0)},
-    "fee-morning":        {"task": "run_fee_agent_all_schools",        "schedule": crontab(hour=8,  minute=0)},
+    # ── Agent cron jobs ──────────────────────────────────────────
+    "academic-nightly": {
+        "task":     "run_academic_agent_all_schools",
+        "schedule": crontab(hour=23, minute=0),
+    },
+    "attendance-evening": {
+        "task":     "run_attendance_agent_all_schools",
+        "schedule": crontab(hour=18, minute=0),
+    },
+    "fee-morning": {
+        "task":     "run_fee_agent_all_schools",
+        "schedule": crontab(hour=8, minute=0),
+    },
+    # ── Notification queue flusher ───────────────────────────────
+    # Runs every 2 minutes — picks up pending notifications and sends them
+    "flush-notifications": {
+        "task":     "flush_notification_queue",
+        "schedule": crontab(minute="*/2"),   # every 2 minutes
+    },
 }
-celery_app.conf.update(include=["app.tasks.agent_tasks"])
+
+# UPDATE include list:
+celery_app.conf.update(
+    include=[
+        "app.tasks.agent_tasks",
+        "app.tasks.notification_tasks",   # ← add this
+    ]
+)

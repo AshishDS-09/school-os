@@ -1,7 +1,8 @@
+
 # backend/seed_data.py
 # Run once: python seed_data.py
 # This creates test data so you can test APIs in Phase 3
-
+from sqlalchemy import text
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from passlib.context import CryptContext
@@ -15,11 +16,33 @@ from app.models.student import Student
 from app.models.marks import Marks, ExamType
 from app.models.attendance import Attendance, AttendanceStatus
 from app.models.fee import FeeRecord, FeeStatus, FeeType
+from app.models.agent_log import AgentLog
+from app.models.notif_queue import NotificationQueue
+from app.models.notification import Notification
 
 DATABASE_URL = "postgresql://schooladmin:schoolpass123@localhost:5432/schoolos"
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 db = Session()
+print("Clearing existing seed data...")
+
+db.execute(text("""
+TRUNCATE TABLE 
+    agent_logs,
+    notification_queue,
+    notifications,
+    fee_records,
+    attendance,
+    marks,
+    students,
+    classes,
+    users,
+    schools
+CASCADE;
+"""))
+
+db.commit()
+print("Database cleared.")
 pwd = CryptContext(schemes=["bcrypt"])
 
 print("Seeding database...")
@@ -84,7 +107,8 @@ for i in range(5):
         school_id=school.id, role=UserRole.parent,
         first_name=f"Parent{i+1}", last_name="Kumar",
         email=f"parent{i+1}@gmail.com",
-        phone=f"98765{i:05d}",
+        phone="+919517249884",  # same phone for all parents for testing
+        # phone=f"+919517249884{i}",  # unique phone for each parent
         hashed_password=pwd.hash("parent123")
     )
     db.add(parent)

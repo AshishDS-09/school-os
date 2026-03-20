@@ -1,15 +1,12 @@
 # backend/app/agents/academic_agent.py
 
-import json
 import logging
-from datetime import date, datetime, timedelta
-from typing import Optional
+from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.agents.base_agent import BaseAgent
 from app.core.database import SessionLocal
-from app.core.llm import safe_llm_call
 from app.models.marks import Marks
 from app.models.student import Student
 from app.models.user import User
@@ -21,6 +18,13 @@ DROP_THRESHOLD_HIGH   = 15.0   # % drop → HIGH risk
 DROP_THRESHOLD_MEDIUM = 8.0    # % drop → MEDIUM risk
 MIN_MARKS_FOR_ANALYSIS = 2     # need at least 2 marks to detect a trend
 LOOKBACK_DAYS = 45             # compare marks from last 45 days
+
+DEFAULT_REMEDIAL_TOPICS = {
+    "mathematics": ["Fractions", "Word Problems", "Algebra Basics"],
+    "science": ["Diagrams", "Definitions", "Concept Revision"],
+    "english": ["Grammar", "Reading Comprehension", "Vocabulary"],
+    "social science": ["Map Practice", "Key Dates", "Short Answers"],
+}
 
 
 class AcademicPerformanceAgent(BaseAgent):
@@ -99,11 +103,15 @@ class AcademicPerformanceAgent(BaseAgent):
 
     async def analyze(self, data: dict) -> dict:
         """
-        Detect performance trends per subject using OpenAI.
+        Detect performance trends per subject using local rules.
         Returns risk level and weak subjects.
         """
         if data.get("error"):
-            return {"risk_level": "NONE", "reason": data["error"]}
+            return {
+                "risk_level": "NONE",
+                "reason": data["error"],
+                "prev_state": data.get("prev_state", {}),
+            }
 
         marks_by_subject = data["marks_by_subject"]
 
@@ -113,17 +121,18 @@ class AcademicPerformanceAgent(BaseAgent):
                 "risk_level":    "NONE",
                 "reason":        "insufficient_data",
                 "weak_subjects": [],
+                "prev_state":    data.get("prev_state", {}),
             }
 
-        # Build a simple per-subject trend summary for the LLM
         subject_summary = {}
         for subject, percentages in marks_by_subject.items():
             if len(percentages) >= 2:
+                drop = round(percentages[0] - percentages[-1], 1)
                 subject_summary[subject] = {
                     "scores":  percentages,
                     "latest":  percentages[-1],
                     "average": round(sum(percentages) / len(percentages), 1),
-                    "drop":    round(percentages[0] - percentages[-1], 1),
+                    "drop":    drop,
                 }
 
         if not subject_summary:
@@ -131,46 +140,49 @@ class AcademicPerformanceAgent(BaseAgent):
                 "risk_level":    "NONE",
                 "reason":        "only_one_mark_per_subject",
                 "weak_subjects": [],
+                "prev_state":    data.get("prev_state", {}),
             }
 
-        prompt = f"""
-You are an academic performance analyst for a school management system.
-Analyze this student's recent subject marks (percentages) and identify performance issues.
-
-Student: {data['student_name']}
-Subject performance data (scores listed oldest to newest):
-{json.dumps(subject_summary, indent=2)}
-
-Rules:
-- HIGH risk:   any subject dropped more than {DROP_THRESHOLD_HIGH}% from first to latest score
-- MEDIUM risk: any subject dropped {DROP_THRESHOLD_MEDIUM}–{DROP_THRESHOLD_HIGH}%
-- LOW risk:    all subjects stable or improving
-
-Respond in JSON only:
-{{
-  "risk_level": "HIGH" | "MEDIUM" | "LOW",
-  "weak_subjects": ["subject1", "subject2"],
-  "biggest_drop_subject": "subject name or null",
-  "biggest_drop_percent": number or 0,
-  "summary": "one sentence describing the situation",
-  "remedial_topics": ["topic1", "topic2", "topic3"]
-}}
-"""
-        text, cost = await safe_llm_call(
-            prompt=prompt,
-            model="gpt-4o-mini",   # cheap model — this runs frequently
-            max_tokens=400,
-            expect_json=True,
+        biggest_drop_subject = max(
+            subject_summary,
+            key=lambda subject: subject_summary[subject]["drop"]
         )
-        self._add_cost(cost)
+        biggest_drop_percent = subject_summary[biggest_drop_subject]["drop"]
 
-        try:
-            result = json.loads(text)
-        except json.JSONDecodeError:
-            logger.warning(f"LLM returned invalid JSON: {text[:200]}")
-            result = {"risk_level": "LOW", "weak_subjects": [], "summary": "Analysis failed"}
+        weak_subjects = [
+            subject for subject, stats in subject_summary.items()
+            if stats["drop"] >= DROP_THRESHOLD_MEDIUM
+        ]
 
-        return result
+        if biggest_drop_percent > DROP_THRESHOLD_HIGH:
+            risk_level = "HIGH"
+        elif biggest_drop_percent >= DROP_THRESHOLD_MEDIUM:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "LOW"
+
+        if risk_level == "LOW":
+            summary = "Recent marks are stable with no meaningful decline detected."
+        else:
+            summary = (
+                f"{data['student_name']} shows a {biggest_drop_percent:.0f}% drop "
+                f"in {biggest_drop_subject}."
+            )
+
+        remedial_topics = DEFAULT_REMEDIAL_TOPICS.get(
+            biggest_drop_subject.lower(),
+            ["Core Concepts", "Practice Questions", "Revision Exercises"],
+        )
+
+        return {
+            "risk_level": risk_level,
+            "weak_subjects": weak_subjects,
+            "biggest_drop_subject": biggest_drop_subject,
+            "biggest_drop_percent": biggest_drop_percent,
+            "summary": summary,
+            "remedial_topics": remedial_topics,
+            "prev_state": data.get("prev_state", {}),
+        }
 
     # ── Step 3: Decide ────────────────────────────────────────────────
 
@@ -286,7 +298,7 @@ Respond in JSON only:
                     f"— School OS"
                 )
 
-            await self.queue_notification(
+            queued = await self.queue_notification(
                 recipient_id       = parent_id,
                 channel            = "whatsapp",
                 notification_type  = "academic_alert",
@@ -297,7 +309,13 @@ Respond in JSON only:
                     "weak_subjects": weak_subjects,
                 }
             )
-            notifications_queued += 1
+            if queued:
+                notifications_queued += 1
+            else:
+                logger.error(
+                    f"[AcademicAgent] Failed to queue parent alert "
+                    f"for student_id={self.student_id} parent_id={parent_id}"
+                )
 
         # ── Save updated agent state ─────────────────────────────────
         await self.save_state(
@@ -319,7 +337,7 @@ Respond in JSON only:
         )
 
         return {
-            "result":               "alert_sent",
+            "result":               "alert_sent" if notifications_queued else "queue_failed",
             "risk_level":           risk_level,
             "weak_subjects":        weak_subjects,
             "notifications_queued": notifications_queued,

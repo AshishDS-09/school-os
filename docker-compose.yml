@@ -117,5 +117,28 @@ services:
       - redis
     command: celery -A app.tasks flower --port=5555
 
+  # ── 9. Notification Worker (FIXED POSITION ✅) ───────────────
+  notif-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: school_notif_worker
+    restart: always
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - postgres
+      - redis
+    command: >
+      celery -A app.tasks worker
+      --loglevel=info
+      --pool=solo
+      --queues=notifications
+      --concurrency=1
+      --hostname=notif-worker@%h
+
+# ✅ ONLY ONE volumes block (at end)
 volumes:
   postgres_data:

@@ -16,7 +16,9 @@ celery_app.conf.update(
     accept_content=["json"],
     timezone="Asia/Kolkata",
     enable_utc=True,
+    broker_connection_retry_on_startup=True,
 )
 
 # THIS IS CRUCIAL — ensures tasks are loaded
 from app.tasks import agent_tasks
+

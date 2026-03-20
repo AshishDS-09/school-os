@@ -185,43 +185,70 @@ class BaseAgent(ABC):
 
     # ── Notification queuing ──────────────────────────────────────────
 
+    # backend/app/agents/base_agent.py
+    # Replace queue_notification method with this updated version:
+
     async def queue_notification(
         self,
-        recipient_id: int,
-        channel: str,
+        recipient_id:      int,
+        channel:           str,
         notification_type: str,
-        payload: dict
-    ) -> None:
+        payload:           dict,
+    ) -> bool:
         """
-        Add a notification to the notification_queue table.
-        The Celery notification worker picks it up and sends it.
-
-        NEVER call Twilio or SendGrid directly from an agent.
-        Always go through the queue — this decouples sending from logic.
-
-        Args:
-            recipient_id:      user.id of who receives it
-            channel:           "whatsapp", "sms", or "email"
-            notification_type: "academic_alert", "fee_reminder" etc.
-            payload:           dict with "message" key and any extra data
+        1. Writes to notification_queue  → Celery worker sends it
+        2. Writes to notifications       → Admin sees it immediately
         """
+        from app.models.notification import (
+            Notification, NotificationChannel, NotificationStatus
+        )
+
+        channel_enum_map = {
+            "whatsapp": NotificationChannel.whatsapp,
+            "sms":      NotificationChannel.sms,
+            "email":    NotificationChannel.email,
+            "in_app":   NotificationChannel.in_app,
+        }
+
         db: Session = SessionLocal()
         try:
+            # 1. Write to queue for sending
             db.add(NotificationQueue(
                 school_id    = self.school_id,
                 recipient_id = recipient_id,
                 channel      = channel,
                 payload      = {
                     "notification_type": notification_type,
-                    **payload
+                    **payload,
                 },
                 status = QueueStatus.pending,
             ))
+
+            # 2. Write immediate record for admin visibility
+            db.add(Notification(
+                school_id         = self.school_id,
+                recipient_id      = recipient_id,
+                channel           = channel_enum_map.get(
+                    channel, NotificationChannel.in_app
+                ),
+                content           = payload.get("message", ""),
+                notification_type = notification_type,
+                triggered_by      = self.agent_name,
+                status            = NotificationStatus.pending,
+            ))
+
             db.commit()
+
             self.logger.info(
-                f"Queued {channel} notification for recipient_id={recipient_id} "
-                f"type={notification_type}"
+                f"Queued {channel} notification for "
+                f"recipient_id={recipient_id} type={notification_type}"
             )
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to queue notification: {e}")
+            db.rollback()
+            return False
         finally:
             db.close()
 
