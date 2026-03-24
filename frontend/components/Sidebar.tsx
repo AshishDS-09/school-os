@@ -17,7 +17,7 @@ const navItems = {
     { href: "/admin",         label: "Overview",       icon: LayoutDashboard },
     { href: "/admin/students",label: "Students",       icon: Users },
     { href: "/admin/agents",  label: "AI Agents",      icon: Activity },
-    { href: "/admin/fees",    label: "Fees",           icon: CreditCard },
+    { href: "/finance",       label: "Fees",           icon: CreditCard },
     { href: "/admin/alerts",  label: "Alerts",         icon: Bell },
   ],
   teacher: [

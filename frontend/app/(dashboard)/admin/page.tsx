@@ -43,7 +43,7 @@ export default function AdminDashboard() {
     { href: "/admin", label: "Overview" },
     { href: "/admin/students", label: "Students" },
     { href: "/admin/agents", label: "AI Agents" },
-    { href: "/admin/fees", label: "Fees" },
+    { href: "/finance", label: "Fees" },
   ];
 
   const { data: students, isLoading: loadingStudents } = useQuery({

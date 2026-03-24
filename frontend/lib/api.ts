@@ -98,3 +98,153 @@ export const notificationsApi = {
   list: (params?: { recipient_id?: number }) =>
     api.get("/api/notifications", { params }),
 };
+
+interface ParentIdentity {
+  user_id?: number;
+  email?: string;
+}
+
+type StudentRecord = Record<string, unknown>;
+
+export interface ParentStudent {
+  id: number;
+  first_name: string;
+  last_name: string;
+  roll_number: string;
+}
+
+function parseParentStudent(record: StudentRecord | undefined): ParentStudent | null {
+  if (!record) return null;
+
+  const id = getNumberField(record, ["id"]);
+  const firstName = getStringField(record, ["first_name"]);
+  const lastName = getStringField(record, ["last_name"]);
+  const rollNumber = getStringField(record, ["roll_number"]);
+
+  if (
+    id === null ||
+    firstName === null ||
+    lastName === null ||
+    rollNumber === null
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    first_name: firstName,
+    last_name: lastName,
+    roll_number: rollNumber,
+  };
+}
+
+function normalizeStudentList(payload: unknown): StudentRecord[] {
+  if (Array.isArray(payload)) return payload.filter(Boolean) as StudentRecord[];
+  if (!payload || typeof payload !== "object") return [];
+
+  const candidateKeys = ["items", "results", "data"];
+  for (const key of candidateKeys) {
+    const value = (payload as Record<string, unknown>)[key];
+    if (Array.isArray(value)) return value.filter(Boolean) as StudentRecord[];
+  }
+
+  return [];
+}
+
+function getNumberField(record: StudentRecord, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) {
+      return Number(value);
+    }
+  }
+
+  return null;
+}
+
+function getStringField(record: StudentRecord, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim().toLowerCase();
+    }
+  }
+
+  return null;
+}
+
+function matchStudentToParent(student: StudentRecord, parent: ParentIdentity): boolean {
+  const parentUserId = parent.user_id;
+  const parentEmail = parent.email?.trim().toLowerCase();
+
+  if (parentUserId !== undefined) {
+    const linkedParentId = getNumberField(student, [
+      "parent_id",
+      "parent_user_id",
+      "guardian_id",
+      "guardian_user_id",
+      "user_id",
+    ]);
+    if (linkedParentId === parentUserId) return true;
+  }
+
+  if (parentEmail) {
+    const linkedEmail = getStringField(student, [
+      "parent_email",
+      "guardian_email",
+      "mother_email",
+      "father_email",
+      "email",
+    ]);
+    if (linkedEmail === parentEmail) return true;
+  }
+
+  return false;
+}
+
+export const parentApi = {
+  // Get the child linked to this parent account
+  getMyChild: (parent?: ParentIdentity) =>
+    api.get("/api/students").then((r) => {
+      const students = normalizeStudentList(r.data);
+
+      if (students.length <= 1) {
+        return parseParentStudent(students[0]);
+      }
+
+      if (!parent) {
+        return null;
+      }
+
+      const match = students.find((student) => matchStudentToParent(student, parent));
+      return parseParentStudent(match);
+    }),
+  getAttendance: (studentId: number, fromDate: string) =>
+    api.get("/api/attendance", {
+      params: { student_id: studentId, from_date: fromDate },
+    }),
+  getMarks: (studentId: number) =>
+    api.get("/api/marks", { params: { student_id: studentId } }),
+  getFees: (studentId: number) =>
+    api.get("/api/fees",  { params: { student_id: studentId } }),
+  getNotifications: (recipientId: number) =>
+    api.get("/api/notifications", { params: { recipient_id: recipientId } }),
+};
+// Add to frontend/lib/api.ts
+
+export const financeApi = {
+  allFees:     (params?: { status?: string }) =>
+    api.get("/api/fees", { params }),
+  updateFee:   (id: number, data: unknown) =>
+    api.patch(`/api/fees/${id}`, data),
+};
+// Add to frontend/lib/api.ts
+
+export const leadsApi = {
+  list:   (params?: { status?: string }) =>
+    api.get("/api/leads", { params }),
+  create: (data: unknown) => api.post("/api/leads", data),
+  update: (id: number, data: unknown) =>
+    api.patch(`/api/leads/${id}`, data),
+};
