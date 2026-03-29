@@ -9,6 +9,7 @@ import {
   LayoutDashboard, Users,
   BookOpen, CreditCard, Bell, LogOut,
   GraduationCap, Activity, UserCheck,
+  Sparkles,
 } from "lucide-react";
 
 // Different nav items per role
@@ -21,6 +22,7 @@ const navItems = {
     { href: "/admin/alerts",  label: "Alerts",         icon: Bell },
   ],
   teacher: [
+    { href: "/teacher/copilot", label: "AI Co-Pilot", icon: Sparkles },
     { href: "/teacher",           label: "My Class",    icon: LayoutDashboard },
     { href: "/teacher/attendance",label: "Attendance",  icon: UserCheck },
     { href: "/teacher/marks",     label: "Marks",       icon: BookOpen },

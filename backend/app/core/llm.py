@@ -1,8 +1,6 @@
 # backend/app/core/llm.py
 
-import asyncio
 import logging
-from typing import Optional
 
 from openai import AsyncOpenAI
 from tenacity import (
@@ -11,7 +9,12 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type,
 )
-from openai import RateLimitError, APITimeoutError, APIConnectionError
+from openai import (
+    RateLimitError,
+    APITimeoutError,
+    APIConnectionError,
+    OpenAIError,
+)
 
 from app.core.config import settings
 from app.core.rate_limiter import openai_rate_limiter
@@ -22,9 +25,21 @@ logger = logging.getLogger(__name__)
 _openai_client: AsyncOpenAI | None = None
 
 
+class LLMConfigurationError(RuntimeError):
+    """Raised when the app is missing required LLM configuration."""
+
+
+class LLMServiceError(RuntimeError):
+    """Raised when the upstream LLM provider request fails."""
+
+
 def get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
+        if not settings.OPENAI_API_KEY:
+            raise LLMConfigurationError(
+                "OPENAI_API_KEY is not configured for the backend."
+            )
         _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     return _openai_client
 
@@ -90,7 +105,16 @@ async def safe_llm_call(
         if expect_json:
             kwargs["response_format"] = {"type": "json_object"}
 
-        response = await client.chat.completions.create(**kwargs)
+        try:
+            response = await client.chat.completions.create(**kwargs)
+        except OpenAIError as exc:
+            logger.exception("OpenAI request failed for model %s", model)
+            if isinstance(exc, RateLimitError) and "insufficient_quota" in str(exc):
+                raise LLMServiceError(
+                    "OpenAI quota exceeded for the configured API key. "
+                    "Update billing or replace OPENAI_API_KEY in backend/.env."
+                ) from exc
+            raise LLMServiceError(f"OpenAI request failed: {exc}") from exc
 
         text = response.choices[0].message.content or ""
 

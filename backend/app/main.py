@@ -21,6 +21,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+
 # backend/app/main.py  — updated imports and router registration
 
 from app.api import (
@@ -28,6 +29,7 @@ from app.api import (
     fees, notifications, agent_logs,
     incidents, leads                   # ← add these two
 )
+from app.api import teacher_tools
 
 
 
@@ -63,6 +65,7 @@ app.include_router(agent_logs.router)
 # add these two lines alongside the other include_router calls:
 app.include_router(incidents.router)
 app.include_router(leads.router)
+app.include_router(teacher_tools.router)
 
 
 # ── Health check endpoints ──────────────────────────────────────────

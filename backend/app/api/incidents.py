@@ -2,6 +2,7 @@
 
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from datetime import date
 from app.core.database import get_db
 from app.core.security import get_current_school_id, TeacherOrAdmin, get_current_user
 from app.models.incident import Incident, IncidentType, IncidentSeverity
+from app.models.student import Student
 from app.models.user import User
 from app.events.publisher import publish_event, Events
 
@@ -48,13 +50,27 @@ async def create_incident(
     Log a behavioral incident for a student.
     Publishes incident.created → triggers Behavioral Monitor Agent.
     """
+    student = db.query(Student).filter(
+        Student.id == payload.student_id,
+        Student.school_id == school_id,
+    ).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
     incident = Incident(
         school_id=school_id,
         reported_by=current_user.id,
         **payload.model_dump()
     )
     db.add(incident)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to create incident for the provided student",
+        )
     db.refresh(incident)
 
     # Publish event → Behavioral Agent checks for patterns
