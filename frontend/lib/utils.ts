@@ -3,7 +3,7 @@
 
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isValid } from "date-fns";
 
 // shadcn utility — merges Tailwind classes
 export function cn(...inputs: ClassValue[]) {
@@ -11,13 +11,19 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // Format date to "15 Nov 2024"
-export function formatDate(dateStr: string | Date): string {
-  return format(new Date(dateStr), "dd MMM yyyy");
+export function formatDate(dateStr: string | Date | null | undefined): string {
+  if (!dateStr) return "—";
+  const parsed = new Date(dateStr);
+  if (!isValid(parsed)) return "—";
+  return format(parsed, "dd MMM yyyy");
 }
 
 // Format to "2 hours ago"
-export function timeAgo(dateStr: string | Date): string {
-  return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
+export function timeAgo(dateStr: string | Date | null | undefined): string {
+  if (!dateStr) return "—";
+  const parsed = new Date(dateStr);
+  if (!isValid(parsed)) return "—";
+  return formatDistanceToNow(parsed, { addSuffix: true });
 }
 
 // Risk level badge colour

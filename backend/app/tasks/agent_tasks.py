@@ -743,6 +743,16 @@ celery_app.conf.beat_schedule = {
         "task":     "run_parent_comm_agent_all_schools",
         "schedule": crontab(minute="*/15"),   # every 15 minutes
     },
+    # Notification queue flusher
+    "flush-notifications": {
+        "task":     "flush_notification_queue",
+        "schedule": crontab(minute="*/2"),
+    },
 }
 
-celery_app.conf.update(include=["app.tasks.agent_tasks"])
+celery_app.conf.update(
+    include=[
+        "app.tasks.agent_tasks",
+        "app.tasks.notification_tasks",
+    ]
+)

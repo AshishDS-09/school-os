@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
 
-    # OpenAI
-    OPENAI_API_KEY: str = ""
+    # Gemini
+    GEMINI_API_KEY: str = ""
     
      # ── Supabase ─────────────────────────
     SUPABASE_URL: str = ""
@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "School OS"
     DEBUG: bool   = True
+    
+    # Add these 3 lines to the Settings class:
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
 
     @field_validator("DEBUG", mode="before")
     @classmethod

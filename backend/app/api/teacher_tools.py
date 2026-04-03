@@ -1,4 +1,5 @@
 # backend/app/api/teacher_tools.py
+from app.core.subscription import check_feature
 
 import asyncio
 import json
@@ -23,7 +24,7 @@ AUTH_RESPONSES = {
         "description": "Authenticated, but only teachers and admins can use this endpoint.",
     },
     502: {
-        "description": "The AI provider request failed. Check backend logs and OpenAI configuration.",
+        "description": "The AI provider request failed. Check backend logs and Gemini configuration.",
     },
     503: {
         "description": "The AI provider is not configured for this backend environment.",
@@ -78,12 +79,12 @@ class WorksheetRequest(BaseModel):
 async def generate_lesson_plan(
     payload: LessonPlanRequest,
     school_id: int = Depends(get_current_school_id),
-    _=TeacherOrAdmin,
+    _=check_feature("teacher_copilot"),   # ← add this
 ):
     """
     Generate a complete lesson plan for a topic.
     Requires a logged-in teacher/admin Bearer token.
-    Uses GPT-4o for high quality structured output.
+    Uses Gemini for high quality structured output.
     Takes 5–15 seconds, which is expected for this tool.
     """
     weak_context = (
@@ -148,7 +149,7 @@ Return a JSON object with this exact structure:
     try:
         text, cost = await safe_llm_call(
             prompt=prompt,
-            model="gpt-4o",
+            model="gemini-2.0-flash",
             max_tokens=1500,
             expect_json=True,
         )
@@ -167,7 +168,7 @@ Return a JSON object with this exact structure:
 async def generate_mcqs(
     payload: MCQRequest,
     school_id: int = Depends(get_current_school_id),
-    _=TeacherOrAdmin,
+    _=check_feature("teacher_copilot"),   # ← add this
 ):
     """
     Generate multiple choice questions for a topic.
@@ -214,7 +215,7 @@ Return JSON only:
     try:
         text, cost = await safe_llm_call(
             prompt=prompt,
-            model="gpt-4o",
+            model="gemini-2.0-flash",
             max_tokens=2000,
             expect_json=True,
         )
@@ -233,7 +234,7 @@ Return JSON only:
 async def generate_worksheet(
     payload: WorksheetRequest,
     school_id: int = Depends(get_current_school_id),
-    _=TeacherOrAdmin,
+    _=check_feature("teacher_copilot"),   # ← add this
 ):
     """
     Generate a printable worksheet with mixed question types.
@@ -300,7 +301,7 @@ Return JSON only:
     try:
         text, cost = await safe_llm_call(
             prompt=prompt,
-            model="gpt-4o",
+            model="gemini-2.0-flash",
             max_tokens=2000,
             expect_json=True,
         )

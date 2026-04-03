@@ -28,6 +28,15 @@ def _recipient_label(channel: str, recipient: User) -> str:
     return f"user_id={recipient.id}"
 
 
+def _payload_destination_label(channel: str, payload: dict, fallback_id: int) -> str:
+    """Fallback destination label when there is no User row for the recipient."""
+    if channel in {"whatsapp", "sms"}:
+        return payload.get("parent_phone") or payload.get("phone") or f"ref_id={fallback_id}"
+    if channel == "email":
+        return payload.get("parent_email") or payload.get("email") or f"ref_id={fallback_id}"
+    return f"ref_id={fallback_id}"
+
+
 # ══════════════════════════════════════════════════════════════════════
 # MAIN SEND TASK
 # ══════════════════════════════════════════════════════════════════════
@@ -82,10 +91,6 @@ def send_notification(
 
         # Load recipient details
         recipient = db.query(User).filter(User.id == recipient_id).first()
-        if not recipient:
-            logger.error(f"Recipient user_id={recipient_id} not found")
-            _mark_failed(db, queue_item, "Recipient not found")
-            return
 
         message = payload.get("message", "")
         subject = payload.get("subject", "School OS Notification")
@@ -95,6 +100,7 @@ def send_notification(
         result = _send_via_channel(
             channel=channel,
             recipient=recipient,
+            payload=payload,
             message=message,
             subject=subject,
         )
@@ -118,7 +124,8 @@ def send_notification(
             )
             logger.info(
                 f"Notification sent: queue_id={queue_id} "
-                f"channel={channel} recipient={_recipient_label(channel, recipient)}"
+                f"channel={channel} recipient="
+                f"{_recipient_label(channel, recipient) if recipient else _payload_destination_label(channel, payload, recipient_id)}"
             )
 
         else:
@@ -240,7 +247,8 @@ def flush_notification_queue():
 
 def _send_via_channel(
     channel:   str,
-    recipient: User,
+    recipient: User | None,
+    payload:   dict,
     message:   str,
     subject:   str,
 ) -> dict:
@@ -256,22 +264,34 @@ def _send_via_channel(
     )
 
     if channel == "whatsapp":
-        if not recipient.phone:
+        phone_value = (
+            recipient.phone if recipient and recipient.phone
+            else payload.get("parent_phone") or payload.get("phone")
+        )
+        if not phone_value:
             return {"success": False, "error": "Recipient has no phone number"}
-        phone = format_phone_for_twilio(recipient.phone)
+        phone = format_phone_for_twilio(phone_value)
         return send_whatsapp(to_phone=phone, message=message)
 
     elif channel == "sms":
-        if not recipient.phone:
+        phone_value = (
+            recipient.phone if recipient and recipient.phone
+            else payload.get("parent_phone") or payload.get("phone")
+        )
+        if not phone_value:
             return {"success": False, "error": "Recipient has no phone number"}
-        phone = format_phone_for_twilio(recipient.phone)
+        phone = format_phone_for_twilio(phone_value)
         return send_sms(to_phone=phone, message=message)
 
     elif channel == "email":
-        if not recipient.email:
+        email_value = (
+            recipient.email if recipient and recipient.email
+            else payload.get("parent_email") or payload.get("email")
+        )
+        if not email_value:
             return {"success": False, "error": "Recipient has no email"}
         return send_email(
-            to_email=recipient.email,
+            to_email=email_value,
             subject=subject,
             body=message,
         )

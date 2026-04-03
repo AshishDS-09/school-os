@@ -43,7 +43,7 @@ class BaseAgent(ABC):
         self.school_id   = school_id
         self.start_time  = datetime.utcnow()
         self.logger      = logging.getLogger(f"agents.{agent_name}")
-        self._cost_usd   = 0.0   # accumulated OpenAI cost for this run
+        self._cost_usd   = 0.0   # accumulated Gemini cost for this run
 
     # ── Abstract lifecycle methods ────────────────────────────────────
     # Every subclass MUST implement all four
@@ -59,7 +59,7 @@ class BaseAgent(ABC):
     @abstractmethod
     async def analyze(self, data: dict) -> dict:
         """
-        Step 2 — Analyse the data. May call OpenAI.
+        Step 2 — Analyse the data. May call Gemini.
         Must return a dict with at minimum a 'risk_level' key.
         """
 
@@ -279,5 +279,5 @@ class BaseAgent(ABC):
             db.close()
 
     def _add_cost(self, cost: float) -> None:
-        """Call this after every OpenAI API call to track spending."""
+        """Call this after every Gemini API call to track spending."""
         self._cost_usd += cost

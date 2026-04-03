@@ -1,28 +1,29 @@
 # backend/app/core/llm.py
 
+import asyncio
 import logging
 
-from openai import AsyncOpenAI
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
+import google.generativeai as genai
+from google.api_core.exceptions import (
+    DeadlineExceeded,
+    GoogleAPIError,
+    ResourceExhausted,
+    ServiceUnavailable,
 )
-from openai import (
-    RateLimitError,
-    APITimeoutError,
-    APIConnectionError,
-    OpenAIError,
-)
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
-from app.core.rate_limiter import openai_rate_limiter
+from app.core.rate_limiter import llm_rate_limiter
 
 logger = logging.getLogger(__name__)
 
-# Single shared OpenAI client for the whole app
-_openai_client: AsyncOpenAI | None = None
+_gemini_models: dict[str, genai.GenerativeModel] = {}
+MODEL_ALIASES = {
+    "gpt-4o-mini": "gemini-2.0-flash",
+    "gpt-4o": "gemini-2.5-pro",
+    "gemini-1.5-flash": "gemini-2.0-flash",
+    "gemini-1.5-pro": "gemini-2.5-pro",
+}
 
 
 class LLMConfigurationError(RuntimeError):
@@ -33,40 +34,43 @@ class LLMServiceError(RuntimeError):
     """Raised when the upstream LLM provider request fails."""
 
 
-def get_openai_client() -> AsyncOpenAI:
-    global _openai_client
-    if _openai_client is None:
-        if not settings.OPENAI_API_KEY:
-            raise LLMConfigurationError(
-                "OPENAI_API_KEY is not configured for the backend."
-            )
-        _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    return _openai_client
+def get_gemini_model(model_name: str) -> genai.GenerativeModel:
+    model_name = MODEL_ALIASES.get(model_name, model_name)
+    if not settings.GEMINI_API_KEY:
+        raise LLMConfigurationError(
+            "GEMINI_API_KEY is not configured for the backend."
+        )
+
+    if model_name not in _gemini_models:
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        _gemini_models[model_name] = genai.GenerativeModel(model_name)
+
+    return _gemini_models[model_name]
 
 
-# Cost per 1000 tokens (approximate, update as OpenAI changes pricing)
+# Cost per 1000 tokens (approximate, update as Gemini pricing changes)
 COST_PER_1K = {
-    "gpt-4o-mini": {"input": 0.000150, "output": 0.000600},
-    "gpt-4o":      {"input": 0.005000, "output": 0.015000},
+    "gemini-2.0-flash": {"input": 0.000075, "output": 0.000300},
+    "gemini-2.5-pro": {"input": 0.001250, "output": 0.005000},
 }
 
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=30),
-    retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIConnectionError)),
+    retry=retry_if_exception_type((ResourceExhausted, DeadlineExceeded, ServiceUnavailable)),
     reraise=True,
 )
 async def safe_llm_call(
     prompt: str,
     system_prompt: str = "You are a helpful school management AI assistant.",
-    model: str = "gpt-4o-mini",   # cheap model for most tasks
+    model: str = "gemini-2.0-flash",
     max_tokens: int = 800,
-    temperature: float = 0.3,     # low temp = consistent, structured output
-    expect_json: bool = False,     # if True, instructs model to return JSON only
+    temperature: float = 0.3,
+    expect_json: bool = False,
 ) -> tuple[str, float]:
     """
-    Make a safe OpenAI API call with:
+    Make a safe Gemini API call with:
     - Token bucket rate limiting (max 50 calls/min)
     - Automatic retry with exponential backoff
     - Cost tracking
@@ -75,60 +79,68 @@ async def safe_llm_call(
         (response_text, cost_usd)
 
     Model choice guide:
-        gpt-4o-mini  → fee reminders, simple alerts, routine messages  (cheap)
-        gpt-4o       → lesson plans, learning paths, complex analysis  (expensive)
+        gemini-2.0-flash  → routine prompts, summaries, quick generation
+        gemini-2.5-pro    → more complex analysis and longer outputs
 
     Example:
         text, cost = await safe_llm_call(
             prompt="Analyse this student's marks: ...",
-            model="gpt-4o-mini",
+            model="gemini-2.0-flash",
             expect_json=True
         )
     """
-    # Acquire rate limit token — waits if bucket is empty
-    async with openai_rate_limiter:
-        client = get_openai_client()
+    async with llm_rate_limiter:
+        model = MODEL_ALIASES.get(model, model)
+        gemini_model = get_gemini_model(model)
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": prompt},
-        ]
-
-        kwargs: dict = dict(
-            model       = model,
-            messages    = messages,
-            max_tokens  = max_tokens,
-            temperature = temperature,
+        final_prompt = (
+            f"System instructions:\n{system_prompt}\n\n"
+            f"User request:\n{prompt}"
         )
-
-        # Ask model to return pure JSON when we need structured data
         if expect_json:
-            kwargs["response_format"] = {"type": "json_object"}
+            final_prompt += (
+                "\n\nReturn valid JSON only. Do not wrap it in markdown fences."
+            )
+
+        generation_config = {
+            "temperature": temperature,
+            "max_output_tokens": max_tokens,
+        }
+        if expect_json:
+            generation_config["response_mime_type"] = "application/json"
 
         try:
-            response = await client.chat.completions.create(**kwargs)
-        except OpenAIError as exc:
-            logger.exception("OpenAI request failed for model %s", model)
-            if isinstance(exc, RateLimitError) and "insufficient_quota" in str(exc):
+            response = await asyncio.to_thread(
+                gemini_model.generate_content,
+                final_prompt,
+                generation_config=generation_config,
+            )
+        except GoogleAPIError as exc:
+            logger.exception("Gemini request failed for model %s", model)
+            if isinstance(exc, ResourceExhausted):
                 raise LLMServiceError(
-                    "OpenAI quota exceeded for the configured API key. "
-                    "Update billing or replace OPENAI_API_KEY in backend/.env."
+                    "Gemini quota exceeded for the configured API key. "
+                    "Update billing or replace GEMINI_API_KEY in backend/.env."
                 ) from exc
-            raise LLMServiceError(f"OpenAI request failed: {exc}") from exc
+            raise LLMServiceError(f"Gemini request failed: {exc}") from exc
 
-        text = response.choices[0].message.content or ""
+        text = getattr(response, "text", "") or ""
+        usage = getattr(response, "usage_metadata", None)
+        prompt_tokens = getattr(usage, "prompt_token_count", 0) or 0
+        completion_tokens = getattr(usage, "candidates_token_count", 0) or 0
+        total_tokens = getattr(usage, "total_token_count", prompt_tokens + completion_tokens)
 
-        # Calculate approximate cost
-        usage = response.usage
-        rates = COST_PER_1K.get(model, COST_PER_1K["gpt-4o-mini"])
-        cost  = (
-            (usage.prompt_tokens     / 1000) * rates["input"] +
-            (usage.completion_tokens / 1000) * rates["output"]
+        rates = COST_PER_1K.get(model, COST_PER_1K["gemini-2.0-flash"])
+        cost = (
+            (prompt_tokens / 1000) * rates["input"] +
+            (completion_tokens / 1000) * rates["output"]
         )
 
         logger.debug(
-            f"LLM call: model={model} tokens={usage.total_tokens} "
-            f"cost=${cost:.6f}"
+            "LLM call: model=%s tokens=%s cost=$%.6f",
+            model,
+            total_tokens,
+            cost,
         )
 
         return text, cost

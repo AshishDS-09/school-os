@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from app.core.database import get_db
-from app.core.security import get_current_school_id, AnyUser
+from app.core.security import get_current_school_id, AnyUser, TeacherOrAdmin
 from app.models.lead import Lead, LeadStatus
 from app.events.publisher import publish_event, Events
 
@@ -33,8 +33,14 @@ class LeadResponse(BaseModel):
     status:             LeadStatus
     source:             Optional[str]
     follow_up_count:    int
+    created_at:         datetime
     class Config:
         from_attributes = True
+
+
+class LeadUpdateRequest(BaseModel):
+    status: Optional[LeadStatus] = None
+    notes: Optional[str] = None
 
 
 @router.post("", response_model=LeadResponse, status_code=201)
@@ -78,3 +84,26 @@ def list_leads(
     if status:
         q = q.filter(Lead.status == status)
     return q.order_by(Lead.created_at.desc()).all()
+
+
+@router.patch("/{lead_id}", response_model=LeadResponse)
+def update_lead(
+    lead_id: int,
+    payload: LeadUpdateRequest,
+    db: Session = Depends(get_db),
+    school_id: int = Depends(get_current_school_id),
+    _=TeacherOrAdmin,
+):
+    lead = db.query(Lead).filter(
+        Lead.id == lead_id,
+        Lead.school_id == school_id,
+    ).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(lead, field, value)
+
+    db.commit()
+    db.refresh(lead)
+    return lead

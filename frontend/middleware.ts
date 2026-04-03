@@ -15,10 +15,15 @@ const ROLE_ROUTES: Record<string, string[]> = {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/pricing";
+
   // Always allow public routes
   if (
-    pathname === "/login" ||
-    pathname === "/" ||
+    isPublicRoute ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname.includes(".")

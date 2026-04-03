@@ -5,19 +5,20 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User, UserRole
+from app.core.tenant import TenantContext
 
 # bcrypt is the gold standard for password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# This tells FastAPI: "look for Bearer token in Authorization header"
-# tokenUrl="/api/auth/login" points to our login endpoint
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# Use plain HTTP Bearer auth for protected endpoints.
+# This keeps runtime auth simple and avoids Swagger's password-flow popup issues.
+bearer_scheme = HTTPBearer()
 
 
 # ── Password helpers ────────────────────────────────────────────────
@@ -60,7 +61,7 @@ def decode_token(token: str) -> dict:
 # ── FastAPI Dependencies (inject into routes) ───────────────────────
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db)
 ) -> User:
     """
@@ -76,6 +77,7 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        token = credentials.credentials
         payload = decode_token(token)
         email: str = payload.get("sub")
         if email is None:
@@ -86,6 +88,7 @@ def get_current_user(
     user = db.query(User).filter(User.email == email).first()
     if user is None or not user.is_active:
         raise credentials_exception
+    TenantContext.set(user.school_id)
     return user
 
 

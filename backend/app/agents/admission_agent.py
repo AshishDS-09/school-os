@@ -15,7 +15,8 @@ from app.models.lead import Lead, LeadStatus
 logger = logging.getLogger(__name__)
 
 # Follow-up sequence timing
-FOLLOW_UP_DELAYS = [1, 3, 7]   # days after lead creation for each follow-up
+# Day 0 should send immediately when a new lead is created.
+FOLLOW_UP_DELAYS = [0, 3, 7]   # days after lead creation for each follow-up
 MAX_FOLLOW_UPS   = 3
 
 

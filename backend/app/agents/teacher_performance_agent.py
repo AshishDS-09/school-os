@@ -180,7 +180,7 @@ Generate a supportive monthly report. Return JSON only:
 """
         text, cost = await safe_llm_call(
             prompt=prompt,
-            model="gpt-4o-mini",
+            model="gemini-2.0-flash",
             max_tokens=600,
             expect_json=True,
         )

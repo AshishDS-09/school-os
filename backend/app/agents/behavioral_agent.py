@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.base_agent import BaseAgent
 from app.core.database import SessionLocal
-from app.core.llm import safe_llm_call
+from app.core.llm import LLMServiceError, safe_llm_call
 from app.models.incident import Incident, IncidentSeverity
 from app.models.student import Student
 
@@ -35,6 +35,39 @@ class BehavioralMonitorAgent(BaseAgent):
     def __init__(self, school_id: int, student_id: int):
         super().__init__("behavioral_agent", school_id)
         self.student_id = student_id
+
+    def _fallback_pattern_analysis(self, data: dict) -> dict:
+        """
+        Deterministic fallback used when Gemini is unavailable.
+        Keeps the agent functional for alerts even if LLM quota is exhausted.
+        """
+        incidents = data.get("incidents", [])
+        if any(item.get("severity") == "high" for item in incidents):
+            return {
+                "pattern_detected": "other",
+                "pattern_description": "High-severity incident requires immediate intervention.",
+                "recommended_action": "parent_meeting",
+                "urgency": "immediate",
+                "counselor_note": "Review the latest high-severity incident and plan follow-up.",
+            }
+
+        incident_types = {item.get("type") for item in incidents}
+        if "bullying" in incident_types:
+            return {
+                "pattern_detected": "bullying",
+                "pattern_description": "Repeated bullying-related behavior detected.",
+                "recommended_action": "counseling",
+                "urgency": "this_week",
+                "counselor_note": "Investigate peer interactions and arrange counselor support.",
+            }
+
+        return {
+            "pattern_detected": "attention_seeking",
+            "pattern_description": "Repeated classroom behavior incidents detected.",
+            "recommended_action": "teacher_observation",
+            "urgency": "this_week",
+            "counselor_note": "Monitor behavior patterns and involve parents if incidents continue.",
+        }
 
     async def fetch_data(self) -> dict:
         db: Session = SessionLocal()
@@ -125,17 +158,23 @@ Return JSON only:
   "counselor_note":      "Brief note for the school counselor"
 }}
 """
-            text, cost = await safe_llm_call(
-                prompt=prompt,
-                model="gpt-4o-mini",
-                max_tokens=400,
-                expect_json=True,
-            )
-            self._add_cost(cost)
             try:
+                text, cost = await safe_llm_call(
+                    prompt=prompt,
+                    model="gemini-2.0-flash",
+                    max_tokens=400,
+                    expect_json=True,
+                )
+                self._add_cost(cost)
                 pattern_analysis = json.loads(text)
-            except json.JSONDecodeError:
-                pattern_analysis = {"pattern_detected": "other", "urgency": "this_week"}
+            except (LLMServiceError, json.JSONDecodeError) as exc:
+                logger.warning(
+                    "[BehavioralAgent] Falling back to rule-based pattern analysis "
+                    "for student_id=%s: %s",
+                    self.student_id,
+                    exc,
+                )
+                pattern_analysis = self._fallback_pattern_analysis(data)
         else:
             pattern_analysis = {"pattern_detected": "none", "urgency": "this_month"}
 

@@ -108,7 +108,7 @@ English:
 """
             translated_text, cost = await safe_llm_call(
                 prompt=prompt,
-                model="gpt-4o-mini",
+                model="gemini-2.0-flash",
                 max_tokens=500,
                 temperature=0.1,
                 expect_json=False,

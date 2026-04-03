@@ -19,6 +19,6 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
 )
 
-# THIS IS CRUCIAL — ensures tasks are loaded
-from app.tasks import agent_tasks
+# This is crucial — import task modules so Celery registers them.
+from app.tasks import agent_tasks, notification_tasks
 

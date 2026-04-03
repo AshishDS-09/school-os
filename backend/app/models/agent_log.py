@@ -26,7 +26,7 @@ class AgentLog(Base, TimestampMixin):
     error_message = Column(Text,       nullable=True)
     # duration_ms: how long the agent took to run
     duration_ms  = Column(Integer,     nullable=True)
-    # cost_usd: OpenAI API cost for this run — track weekly to control spend
+    # cost_usd: Gemini API cost for this run — track weekly to control spend
     cost_usd     = Column(Float,       default=0.0)
 
     def __repr__(self):

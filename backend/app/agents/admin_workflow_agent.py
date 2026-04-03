@@ -146,7 +146,7 @@ Generate a brief, actionable morning briefing. Return JSON only:
 """
         text, cost = await safe_llm_call(
             prompt=prompt,
-            model="gpt-4o-mini",
+            model="gemini-2.0-flash",
             max_tokens=400,
             expect_json=True,
         )

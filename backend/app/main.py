@@ -26,10 +26,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     auth, students, attendance, marks,
-    fees, notifications, agent_logs,
+    fees, notifications, agent_logs, gemini,
     incidents, leads                   # ← add these two
 )
 from app.api import teacher_tools
+# backend/app/main.py  — add these lines
+from app.api import billing
+
+
 
 
 
@@ -55,6 +59,7 @@ app.add_middleware(
 )
 
 # ── Register all routers ────────────────────────────────────────────
+app.include_router(billing.router)
 app.include_router(auth.router)
 app.include_router(students.router)
 app.include_router(attendance.router)
@@ -62,6 +67,7 @@ app.include_router(marks.router)
 app.include_router(fees.router)
 app.include_router(notifications.router)
 app.include_router(agent_logs.router)
+app.include_router(gemini.router, prefix="/ai", tags=["Gemini AI"])
 # add these two lines alongside the other include_router calls:
 app.include_router(incidents.router)
 app.include_router(leads.router)

@@ -38,7 +38,7 @@ TRUNCATE TABLE
     classes,
     users,
     schools
-CASCADE;
+RESTART IDENTITY CASCADE;
 """))
 
 db.commit()
