@@ -1,19 +1,57 @@
-# backend/Dockerfile
+# # backend/Dockerfile
+
+# FROM python:3.11-slim
+
+# WORKDIR /app
+
+# ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+#     PIP_DEFAULT_TIMEOUT=300
+
+# # Install dependencies first (cached separately from code)
+# COPY requirements.txt .
+# RUN pip install --upgrade pip && \
+#     pip install --no-cache-dir --retries 10 --timeout 300 -r requirements.txt
+
+# # Copy all backend code
+# COPY . .
+
+# # Default command (overridden by docker-compose)
+# CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# backend/Dockerfile  — final production version
 
 FROM python:3.11-slim
 
+# Set environment to production
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV ENVIRONMENT=production
+
 WORKDIR /app
 
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_DEFAULT_TIMEOUT=300
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies first (cached separately from code)
+# Install Python dependencies first (cached layer)
 COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --retries 10 --timeout 300 -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all backend code
+# Copy application code
 COPY . .
 
-# Default command (overridden by docker-compose)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Create non-root user for security
+RUN adduser --disabled-password --gecos "" appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--workers", "2", "--log-level", "info"]

@@ -33,6 +33,7 @@ interface BillingStatus {
   label:           string;
   features:        Record<string, boolean | number>;
   razorpay_key:    string;
+  billing_enabled: boolean;
   school_name:     string;
 }
 
@@ -67,9 +68,17 @@ export default function BillingPage() {
   });
 
   const plans = plansData?.plans ?? [];
+  const billingEnabled = Boolean(status?.billing_enabled && status?.razorpay_key);
 
   const handleUpgrade = async (tier: string) => {
     if (tier === status?.current_tier) return;
+    if (!billingEnabled) {
+      toast({
+        title: "Free testing mode",
+        description: "Billing is disabled for this deployment.",
+      });
+      return;
+    }
     setUpgrading(tier);
 
     try {
@@ -201,6 +210,12 @@ export default function BillingPage() {
           </div>
         )}
 
+        {!loadingStatus && status && !billingEnabled && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            Billing is disabled for this deployment. Your team can test the platform without Razorpay for now.
+          </div>
+        )}
+
         {/* Plan comparison */}
         <div>
           <p className="text-sm font-semibold text-slate-800 mb-4">
@@ -284,9 +299,11 @@ export default function BillingPage() {
                       className="w-full h-8 text-xs bg-blue-600
                                  hover:bg-blue-700 text-white"
                       onClick={() => handleUpgrade(plan.tier)}
-                      disabled={upgrading === plan.tier}
+                      disabled={!billingEnabled || upgrading === plan.tier}
                     >
-                      {upgrading === plan.tier ? "Processing..." : (
+                      {upgrading === plan.tier ? "Processing..." : !billingEnabled ? (
+                        "Billing disabled"
+                      ) : (
                         <>
                           Upgrade to {plan.label}
                           <ArrowUpRight className="w-3.5 h-3.5 ml-1" />

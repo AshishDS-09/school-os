@@ -8,7 +8,7 @@ import { Topbar } from "@/components/Topbar";
 import { Button } from "@/components/ui/button";
 import { Input }  from "@/components/ui/input";
 import { Label }  from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem,
   SelectTrigger, SelectValue,
@@ -52,7 +52,7 @@ export default function TeacherCopilotPage() {
 
     try {
       let endpoint = "";
-      let body: Record<string, unknown> = { subject, grade, topic };
+      const body: Record<string, unknown> = { subject, grade, topic };
 
       if (tab === "lesson") {
         endpoint = "/api/teacher-tools/lesson-plan";

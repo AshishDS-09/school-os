@@ -44,6 +44,7 @@ def get_plans():
     No auth required so visitors can see pricing before signing up.
     """
     return {
+        "billing_enabled": settings.billing_enabled,
         "plans": [
             {
                 "tier":        tier,
@@ -77,6 +78,7 @@ def get_billing_status(
         **info,
         "school_name": school.name if school else "",
         "razorpay_key": settings.RAZORPAY_KEY_ID,
+        "billing_enabled": settings.billing_enabled,
     }
 
 
@@ -92,6 +94,12 @@ def create_payment_order(
         Frontend opens Razorpay modal with order_id
         User pays → Razorpay calls /verify-payment
     """
+    if not settings.billing_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Billing is disabled for this deployment."
+        )
+
     if payload.tier not in ("basic", "smart", "pro"):
         raise HTTPException(
             status_code=400,
@@ -198,6 +206,12 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     Settings → Webhooks → Add new webhook
     URL: https://yourapi.com/api/billing/webhook
     """
+    if not settings.billing_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Billing is disabled for this deployment."
+        )
+
     body      = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
 

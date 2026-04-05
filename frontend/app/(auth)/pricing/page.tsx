@@ -81,12 +81,19 @@ declare global {
   }
 }
 
+const BILLING_ENABLED = Boolean(process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID);
+
 export default function PricingPage() {
   const router        = useRouter();
   const { isLoggedIn, user } = useAuthStore();
   const [loading, setLoading] = useState<string | null>(null);
 
   const handleSelect = async (plan: Plan) => {
+    if (!BILLING_ENABLED) {
+      router.push(isLoggedIn ? "/admin" : "/register?tier=basic");
+      return;
+    }
+
     if (!isLoggedIn) {
       router.push(`/register?tier=${plan.tier}`);
       return;
@@ -96,7 +103,6 @@ export default function PricingPage() {
 
     try {
       // Step 1: Create order
-      const { default: axios } = await import("axios");
       const { api } = await import("@/lib/api");
 
       const { data: order } = await api.post("/api/billing/create-order", {
@@ -178,6 +184,13 @@ export default function PricingPage() {
           </p>
         </div>
 
+        {!BILLING_ENABLED && (
+          <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            Billing is disabled in this deployment, so all testing is free right now.
+            You can explore the app without adding a Razorpay key.
+          </div>
+        )}
+
         {/* Plan cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {PLANS.map((plan) => (
@@ -255,6 +268,10 @@ export default function PricingPage() {
                 >
                   {loading === plan.tier
                     ? "Processing..."
+                    : !BILLING_ENABLED
+                    ? isLoggedIn
+                      ? "Continue Free Testing"
+                      : "Start Free Testing"
                     : isLoggedIn
                     ? `Upgrade to ${plan.label}`
                     : `Start with ${plan.label}`
