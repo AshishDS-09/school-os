@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader,
          CardTitle, CardDescription } from "@/components/ui/card";
 import { normalizeToastValue, useToast } from "@/components/ui/use-toast";
 
-import { authApi }       from "@/lib/api";
+import { api, authApi }  from "@/lib/api";
 import { useAuthStore }  from "@/lib/auth-store";
 
 const schema = z.object({
@@ -59,6 +59,11 @@ export default function LoginPage() {
       router.push(redirects[data.role] ?? "/admin");
 
     } catch (err: unknown) {
+      const networkMessage = (
+        err as { message?: string; response?: unknown }
+      )?.response
+        ? null
+        : `Cannot reach API at ${api.defaults.baseURL}. Check that the frontend is using the right backend.`;
       const detail = (
         err as { response?: { data?: { detail?: unknown; message?: unknown } } }
       )?.response?.data?.detail;
@@ -68,6 +73,7 @@ export default function LoginPage() {
       const msg =
         normalizeToastValue(detail) ??
         normalizeToastValue(fallbackMessage) ??
+        networkMessage ??
         "Login failed. Check your credentials.";
 
       toast({
