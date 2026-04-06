@@ -1,12 +1,13 @@
 # backend/app/tasks/__init__.py
 
 from celery import Celery
-import os
+
+from app.core.config import settings
 
 celery_app = Celery(
     "school_os",
-    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/1"),
-    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2"),
+    broker=settings.celery_broker_url,
+    backend=settings.celery_result_backend,
     include=[]  # agents will be added here in Phase 5
 )
 

@@ -67,7 +67,6 @@
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 class Settings(BaseSettings):
     # ── Environment ─────────────────────────────────
@@ -104,8 +103,8 @@ class Settings(BaseSettings):
     SENDGRID_FROM_EMAIL: str = "noreply@yourschool.com"
 
     # ── Celery ────────────────────────────────────────
-    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
+    CELERY_BROKER_URL: str = ""
+    CELERY_RESULT_BACKEND: str = ""
 
     # ── Razorpay ──────────────────────────────────────
     RAZORPAY_KEY_ID: str = ""
@@ -137,7 +136,24 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def allowed_origin_regex(self) -> str:
+        # Allow Vercel production and preview deployments unless explicitly restricted elsewhere.
+        return r"^https://.*\.vercel\.app$"
+
+    @property
+    def celery_broker_url(self) -> str:
+        if self.CELERY_BROKER_URL:
+            return self.CELERY_BROKER_URL
+        return self.REDIS_URL.replace("/0", "/1") if self.REDIS_URL.endswith("/0") else self.REDIS_URL
+
+    @property
+    def celery_result_backend(self) -> str:
+        if self.CELERY_RESULT_BACKEND:
+            return self.CELERY_RESULT_BACKEND
+        return self.REDIS_URL.replace("/0", "/2") if self.REDIS_URL.endswith("/0") else self.REDIS_URL
 
     @property
     def billing_enabled(self) -> bool:

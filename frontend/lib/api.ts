@@ -2,7 +2,21 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function resolveBaseUrl() {
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (configuredUrl) return configuredUrl;
+
+  if (typeof window !== "undefined") {
+    const { hostname } = window.location;
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+  }
+
+  return "https://school-os-production.up.railway.app";
+}
+
+const BASE_URL = resolveBaseUrl();
 
 // Single axios instance used by the whole app
 export const api = axios.create({
