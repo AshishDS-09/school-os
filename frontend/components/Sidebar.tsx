@@ -15,9 +15,11 @@ import {
 // Different nav items per role
 const navItems = {
   admin: [
-    // In navItems.admin array, add:
     { href: "/admin/billing", label: "Billing", icon: CreditCard },
     { href: "/admin",         label: "Overview",       icon: LayoutDashboard },
+    { href: "/admin/classes", label: "Classes",        icon: BookOpen },
+    { href: "/admin/teachers", label: "Teachers",      icon: UserCheck },
+    { href: "/admin/parents", label: "Parents",        icon: Users },
     { href: "/admin/students",label: "Students",       icon: Users },
     { href: "/admin/admission", label: "Admission",    icon: Users },
     { href: "/admin/agents",  label: "AI Agents",      icon: Activity },

@@ -41,6 +41,9 @@ export default function AdminDashboard() {
   const { user } = useAuthStore();
   const mobileLinks = [
     { href: "/admin", label: "Overview" },
+    { href: "/admin/classes", label: "Classes" },
+    { href: "/admin/teachers", label: "Teachers" },
+    { href: "/admin/parents", label: "Parents" },
     { href: "/admin/students", label: "Students" },
     { href: "/admin/agents", label: "AI Agents" },
     { href: "/finance", label: "Fees" },

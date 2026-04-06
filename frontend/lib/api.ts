@@ -80,6 +80,16 @@ export const studentsApi = {
   update: (id: number, data: unknown) => api.put(`/api/students/${id}`, data),
 };
 
+export const classesApi = {
+  list: () => api.get("/api/classes"),
+  create: (data: unknown) => api.post("/api/classes", data),
+};
+
+export const usersApi = {
+  list: (params?: { role?: string }) => api.get("/api/users", { params }),
+  create: (data: unknown) => api.post("/api/users", data),
+};
+
 export const attendanceApi = {
   mark: (data: unknown) => api.post("/api/attendance", data),
   list: (params?: {

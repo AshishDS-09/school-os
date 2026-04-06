@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.core.database import get_db
-from app.core.security import get_current_school_id, TeacherOrAdmin, AnyUser
+from app.core.security import get_current_school_id, TeacherOrAdmin
 from app.models.student import Student
 from app.models.user import User, UserRole
 from app.schemas.student import StudentCreate, StudentUpdate, StudentResponse
@@ -22,7 +22,9 @@ async def list_students(
     is_active: Optional[bool] = Query(True, description="Filter active/inactive"),
     db: Session = Depends(get_db),
     school_id: int = Depends(get_current_school_id),
-    _=AnyUser
+    current_user: User = Depends(__import__(
+        "app.core.security", fromlist=["get_current_user"]
+    ).get_current_user),
 ):
     """
     Get all students for the logged-in user's school.
@@ -41,6 +43,9 @@ async def list_students(
 
     # Cache miss — hit the database
     query = db.query(Student).filter(Student.school_id == school_id)
+
+    if current_user.role == UserRole.parent:
+        query = query.filter(Student.parent_id == current_user.id)
 
     if class_id is not None:
         query = query.filter(Student.class_id == class_id)
