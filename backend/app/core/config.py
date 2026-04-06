@@ -113,7 +113,11 @@ class Settings(BaseSettings):
 
     # ── CORS ──────────────────────────────────────────
     # Comma-separated list of allowed frontend origins
-    ALLOWED_ORIGINS: str = "http://localhost:3000"
+    ALLOWED_ORIGINS: str = (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "https://school-os-eight.vercel.app"
+    )
 
     # ── App ───────────────────────────────────────────
     APP_NAME: str = "School OS"
