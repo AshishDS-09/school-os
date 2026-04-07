@@ -1,10 +1,11 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Users } from "lucide-react";
+import { Eye, EyeOff, Loader2, Users } from "lucide-react";
 
 import { Topbar } from "@/components/Topbar";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ function toList<T>(payload: unknown): T[] {
 export default function AdminParentsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [showPassword, setShowPassword] = useState(false);
   const {
     register,
     handleSubmit,
@@ -127,7 +129,21 @@ export default function AdminParentsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Password</Label>
-                <Input className="h-9 text-sm" type="password" {...register("password")} />
+                <div className="relative">
+                  <Input
+                    className="h-9 pr-10 text-sm"
+                    type={showPassword ? "text" : "password"}
+                    {...register("password")}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-slate-500 hover:text-slate-700"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((prev) => !prev)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
                 {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
               </div>
               <div className="space-y-1.5">

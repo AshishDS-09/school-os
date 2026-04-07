@@ -38,6 +38,16 @@ interface Student {
   roll_number: string;
 }
 
+function getErrorMessage(err: unknown): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: string } | undefined;
+    if (typeof first?.msg === "string" && first.msg.trim()) return first.msg;
+  }
+  return "Could not create student.";
+}
+
 const schema = z.object({
   class_id: z.string().min(1, "Select a class"),
   parent_id: z.string().optional(),
@@ -113,9 +123,7 @@ export default function AdminStudentsPage() {
       queryClient.invalidateQueries({ queryKey: ["students"] });
       queryClient.invalidateQueries({ queryKey: ["students", "active"] });
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        "Could not create student.";
+      const message = getErrorMessage(err);
       toast({ title: "Create failed", description: message, variant: "destructive" });
     }
   };
@@ -196,7 +204,17 @@ export default function AdminStudentsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Gender</Label>
-                  <Input className="h-9 text-sm" placeholder="male / female" {...register("gender")} />
+                  <select
+                    className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500"
+                    defaultValue=""
+                    {...register("gender")}
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                    <option value="prefer_not_to_say">Prefer not to say</option>
+                  </select>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Phone</Label>

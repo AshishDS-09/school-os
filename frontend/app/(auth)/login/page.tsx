@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { GraduationCap, Loader2 } from "lucide-react";
+import { Eye, EyeOff, GraduationCap, Loader2 } from "lucide-react";
 
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
@@ -29,6 +29,7 @@ export default function LoginPage() {
   const { toast } = useToast();
   const setAuth   = useAuthStore((s) => s.setAuth);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } =
     useForm<FormValues>({ resolver: zodResolver(schema) });
@@ -128,13 +129,23 @@ export default function LoginPage() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="password" className="text-xs">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  className="h-9 text-sm"
-                  {...register("password")}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    className="h-9 pr-10 text-sm"
+                    {...register("password")}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-slate-500 hover:text-slate-700"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((prev) => !prev)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
                 {errors.password && (
                   <p className="text-xs text-red-500">
                     {errors.password.message}

@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
-import { GraduationCap, Loader2 } from "lucide-react";
+import { Eye, EyeOff, GraduationCap, Loader2 } from "lucide-react";
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
 import { Label }    from "@/components/ui/label";
@@ -36,6 +36,7 @@ function RegisterForm() {
   const { toast }    = useToast();
   const setAuth      = useAuthStore((s) => s.setAuth);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const tier = params.get("tier") ?? "basic";
 
@@ -149,9 +150,19 @@ function RegisterForm() {
 
           <div className="space-y-1.5">
             <Label className="text-xs">Password</Label>
-            <Input className="h-9 text-sm" type="password"
-              placeholder="Minimum 8 characters"
-              {...register("admin_password")} />
+            <div className="relative">
+              <Input className="h-9 pr-10 text-sm" type={showPassword ? "text" : "password"}
+                placeholder="Minimum 8 characters"
+                {...register("admin_password")} />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-slate-500 hover:text-slate-700"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((prev) => !prev)}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             {errors.admin_password && (
               <p className="text-xs text-red-500">
                 {errors.admin_password.message}

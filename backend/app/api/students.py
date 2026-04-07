@@ -2,10 +2,12 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 
 from app.core.database import get_db
 from app.core.security import get_current_school_id, TeacherOrAdmin
+from app.models.class_ import Class_
 from app.models.student import Student
 from app.models.user import User, UserRole
 from app.schemas.student import StudentCreate, StudentUpdate, StudentResponse
@@ -97,10 +99,33 @@ async def create_student(
     _=TeacherOrAdmin
 ):
     """Create a new student. Only teachers and admins can do this."""
+    class_ = db.query(Class_).filter(
+        Class_.id == payload.class_id,
+        Class_.school_id == school_id
+    ).first()
+    if not class_:
+        raise HTTPException(status_code=400, detail="Selected class was not found in your school.")
+
+    if payload.parent_id is not None:
+        parent = db.query(User).filter(
+            User.id == payload.parent_id,
+            User.school_id == school_id,
+            User.role == UserRole.parent
+        ).first()
+        if not parent:
+            raise HTTPException(status_code=400, detail="Selected parent account was not found.")
+
     student = Student(school_id=school_id, **payload.model_dump())
-    db.add(student)
-    db.commit()
-    db.refresh(student)
+    try:
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Could not create student due to invalid linked records."
+        )
 
     # Invalidate cached student lists for this school
     await cache_invalidate(f"students:{school_id}:*")
@@ -125,12 +150,28 @@ async def update_student(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
+    updates = payload.model_dump(exclude_unset=True)
+    if "class_id" in updates:
+        class_ = db.query(Class_).filter(
+            Class_.id == updates["class_id"],
+            Class_.school_id == school_id
+        ).first()
+        if not class_:
+            raise HTTPException(status_code=400, detail="Selected class was not found in your school.")
+
     # Only update fields that were actually sent (exclude_unset=True)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    for field, value in updates.items():
         setattr(student, field, value)
 
-    db.commit()
-    db.refresh(student)
+    try:
+        db.commit()
+        db.refresh(student)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Could not update student due to invalid linked records."
+        )
 
     # Clear all cached student data for this school
     await cache_invalidate(f"students:{school_id}:*")
