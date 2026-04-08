@@ -46,7 +46,6 @@ def _payload_destination_label(channel: str, payload: dict, fallback_id: int) ->
     bind=True,
     max_retries=MAX_RETRIES,
     acks_late=True,          # only remove from queue after task succeeds
-    queue="notifications",        # ← add this line
 )
 def send_notification(
     self,
@@ -81,8 +80,10 @@ def send_notification(
             logger.warning(f"Queue item {queue_id} not found — already processed?")
             return
 
-        if queue_item.status == QueueStatus.sent:
-            logger.info(f"Queue item {queue_id} already sent — skipping")
+        if queue_item.status in {QueueStatus.sent, QueueStatus.sending}:
+            logger.info(
+                f"Queue item {queue_id} already {queue_item.status.value} — skipping"
+            )
             return
 
         # Mark as 'sending' so other workers don't pick it up simultaneously
@@ -225,8 +226,7 @@ def flush_notification_queue():
                     payload      = item.payload,
                     school_id    = item.school_id,
                 ),
-                queue="notifications", # <- route to dedicated worker queue
-            ) 
+            )
             dispatched += 1
 
         if dispatched > 0:

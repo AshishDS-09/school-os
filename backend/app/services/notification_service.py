@@ -29,6 +29,11 @@ def send_whatsapp(to_phone: str, message: str) -> dict:
         Twilio sandbox works with any WhatsApp-enabled number.
     """
     try:
+        if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_AUTH_TOKEN:
+            return {"success": False, "error": "Twilio credentials are not configured"}
+        if not settings.TWILIO_WHATSAPP_FROM:
+            return {"success": False, "error": "TWILIO_WHATSAPP_FROM is not configured"}
+
         from twilio.rest import Client
         from twilio.base.exceptions import TwilioRestException
 

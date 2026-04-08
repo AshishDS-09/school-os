@@ -213,7 +213,7 @@ class BaseAgent(ABC):
         db: Session = SessionLocal()
         try:
             # 1. Write to queue for sending
-            db.add(NotificationQueue(
+            queue_item = NotificationQueue(
                 school_id    = self.school_id,
                 recipient_id = recipient_id,
                 channel      = channel,
@@ -222,7 +222,8 @@ class BaseAgent(ABC):
                     **payload,
                 },
                 status = QueueStatus.pending,
-            ))
+            )
+            db.add(queue_item)
 
             # 2. Write immediate record for admin visibility
             db.add(Notification(
@@ -243,6 +244,22 @@ class BaseAgent(ABC):
                 f"Queued {channel} notification for "
                 f"recipient_id={recipient_id} type={notification_type}"
             )
+            # Best-effort immediate dispatch so notifications can still send
+            # even when celery-beat is unavailable. The queue flusher remains
+            # as a safety net.
+            try:
+                from app.tasks.notification_tasks import send_notification
+                send_notification.delay(
+                    queue_id=queue_item.id,
+                    recipient_id=recipient_id,
+                    channel=channel,
+                    payload=queue_item.payload,
+                    school_id=self.school_id,
+                )
+            except Exception as exc:
+                self.logger.warning(
+                    f"Immediate notification dispatch failed for queue_id={queue_item.id}: {exc}"
+                )
             return True
 
         except Exception as e:
