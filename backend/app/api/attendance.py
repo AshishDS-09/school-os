@@ -3,17 +3,22 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 import asyncio
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import date
 from typing import List, Optional
 from pydantic import BaseModel
+import logging
 
 from app.core.database import get_db
 from app.core.security import get_current_school_id, TeacherOrAdmin, get_current_user
 from app.models.attendance import Attendance, AttendanceStatus
+from app.models.class_ import Class_
+from app.models.student import Student
 from app.models.user import User
-from app.services.cache_service import cache_invalidate, make_cache_key
+from app.services.cache_service import cache_invalidate
 
 router = APIRouter(prefix="/api/attendance", tags=["Attendance"])
+logger = logging.getLogger(__name__)
 
 class AttendanceMarkRequest(BaseModel):
     student_id: int
@@ -46,6 +51,22 @@ async def mark_attendance(
     After saving, publishes a Redis event so the Attendance Agent
     can immediately check for absence patterns.
     """
+    class_ = db.query(Class_).filter(
+        Class_.id == payload.class_id,
+        Class_.school_id == school_id
+    ).first()
+    if not class_:
+        raise HTTPException(status_code=400, detail="Selected class was not found in your school.")
+
+    student = db.query(Student).filter(
+        Student.id == payload.student_id,
+        Student.school_id == school_id
+    ).first()
+    if not student:
+        raise HTTPException(status_code=400, detail="Selected student was not found in your school.")
+    if student.class_id != payload.class_id:
+        raise HTTPException(status_code=400, detail="Student does not belong to the selected class.")
+
     # Check if attendance already marked for this student on this date
     existing = db.query(Attendance).filter(
         Attendance.student_id == payload.student_id,
@@ -57,8 +78,12 @@ async def mark_attendance(
         # Update existing record instead of creating duplicate
         existing.status = payload.status
         existing.notes = payload.notes
-        db.commit()
-        db.refresh(existing)
+        try:
+            db.commit()
+            db.refresh(existing)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=400, detail="Could not save attendance due to invalid linked records.")
         record = existing
     else:
         record = Attendance(
@@ -66,12 +91,19 @@ async def mark_attendance(
             marked_by=current_user.id,
             **payload.model_dump()
         )
-        db.add(record)
-        db.commit()
-        db.refresh(record)
+        try:
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=400, detail="Could not save attendance due to invalid linked records.")
 
     # Invalidate attendance cache
-    await cache_invalidate(f"attendance:{school_id}:*")
+    try:
+        await cache_invalidate(f"attendance:{school_id}:*")
+    except Exception as exc:
+        logger.warning("Attendance cache invalidate failed for school_id=%s: %s", school_id, exc)
 
     # # Publish event for Attendance Agent (Phase 4)
     # # We import lazily so Phase 3 works even before Phase 4 is built
@@ -91,18 +123,20 @@ async def mark_attendance(
     # backend/app/api/attendance.py
 # Replace the try/except event block in mark_attendance() with this:
 
-    from app.events.publisher import publish_event, Events
-
-    asyncio.create_task(
-        publish_event(Events.ATTENDANCE_MARKED, {
-            "school_id":  school_id,
-            "student_id": payload.student_id,
-            "class_id":   payload.class_id,
-            "date":       str(payload.date),
-            "status":     payload.status.value,
-            "marked_by":  current_user.id,
-        })
-    )
+    try:
+        from app.events.publisher import publish_event, Events
+        asyncio.create_task(
+            publish_event(Events.ATTENDANCE_MARKED, {
+                "school_id":  school_id,
+                "student_id": payload.student_id,
+                "class_id":   payload.class_id,
+                "date":       str(payload.date),
+                "status":     payload.status.value,
+                "marked_by":  current_user.id,
+            })
+        )
+    except Exception as exc:
+        logger.warning("Attendance event publish failed for student_id=%s school_id=%s: %s", payload.student_id, school_id, exc)
 
     return record
 

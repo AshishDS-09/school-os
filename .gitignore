@@ -11,6 +11,7 @@ __pycache__/
 *.py[cod]
 *.pyo
 .venv/
+.venv313/
 venv/
 *.egg-info/
 dist/

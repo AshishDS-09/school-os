@@ -1,19 +1,24 @@
 # backend/app/api/marks.py
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import date
 import asyncio
 from typing import List, Optional
 from pydantic import BaseModel
+import logging
 
 from app.core.database import get_db
 from app.core.security import get_current_school_id, TeacherOrAdmin, get_current_user
+from app.models.class_ import Class_
 from app.models.marks import Marks, ExamType
+from app.models.student import Student
 from app.models.user import User
 from app.services.cache_service import cache_invalidate
 
 router = APIRouter(prefix="/api/marks", tags=["Marks"])
+logger = logging.getLogger(__name__)
 
 class MarksCreateRequest(BaseModel):
     student_id: int
@@ -51,17 +56,40 @@ async def enter_marks(
     Enter exam marks for a student.
     Publishes marks.entered event → triggers Academic Agent immediately.
     """
+    class_ = db.query(Class_).filter(
+        Class_.id == payload.class_id,
+        Class_.school_id == school_id
+    ).first()
+    if not class_:
+        raise HTTPException(status_code=400, detail="Selected class was not found in your school.")
+
+    student = db.query(Student).filter(
+        Student.id == payload.student_id,
+        Student.school_id == school_id
+    ).first()
+    if not student:
+        raise HTTPException(status_code=400, detail="Selected student was not found in your school.")
+    if student.class_id != payload.class_id:
+        raise HTTPException(status_code=400, detail="Student does not belong to the selected class.")
+
     record = Marks(
         school_id=school_id,
         entered_by=current_user.id,
         **payload.model_dump()
     )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
+    try:
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Could not save marks due to invalid linked records.")
 
     # Invalidate marks cache for this student
-    await cache_invalidate(f"marks:{school_id}:{payload.student_id}:*")
+    try:
+        await cache_invalidate(f"marks:{school_id}:{payload.student_id}:*")
+    except Exception as exc:
+        logger.warning("Marks cache invalidate failed for school_id=%s student_id=%s: %s", school_id, payload.student_id, exc)
 
     # Publish event → Academic Agent runs immediately (Phase 4+)
     # try:
@@ -84,23 +112,25 @@ async def enter_marks(
 
     # ── Publish event AFTER successful DB write ──────────────────
     # Import here so Phase 3 still works if subscriber isn't running yet
-    from app.events.publisher import publish_event, Events
-
-    # asyncio.create_task runs publish_event in the background
-    # The API response returns immediately — no waiting for Redis
-    asyncio.create_task(
-        publish_event(Events.MARKS_ENTERED, {
-            "school_id":  school_id,
-            "student_id": payload.student_id,
-            "class_id":   payload.class_id,
-            "subject":    payload.subject,
-            "exam_type":  payload.exam_type.value,
-            "score":      payload.score,
-            "max_score":  payload.max_score,
-            "percentage": record.percentage,
-            "entered_by": current_user.id,
-        })
-    )
+    try:
+        from app.events.publisher import publish_event, Events
+        # asyncio.create_task runs publish_event in the background
+        # The API response returns immediately — no waiting for Redis
+        asyncio.create_task(
+            publish_event(Events.MARKS_ENTERED, {
+                "school_id":  school_id,
+                "student_id": payload.student_id,
+                "class_id":   payload.class_id,
+                "subject":    payload.subject,
+                "exam_type":  payload.exam_type.value,
+                "score":      payload.score,
+                "max_score":  payload.max_score,
+                "percentage": record.percentage,
+                "entered_by": current_user.id,
+            })
+        )
+    except Exception as exc:
+        logger.warning("Marks event publish failed for student_id=%s school_id=%s: %s", payload.student_id, school_id, exc)
 
     return record
 

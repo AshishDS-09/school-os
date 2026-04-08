@@ -79,6 +79,7 @@ export function AttendanceGrid({ students }: { students: Student[] }) {
     setSubmitting(true);
     let success = 0;
     let failed  = 0;
+    let firstError: string | null = null;
 
     // Submit one by one — API processes them sequentially
     for (const student of students) {
@@ -90,8 +91,19 @@ export function AttendanceGrid({ students }: { students: Student[] }) {
           status:     attendance[student.id] ?? "present",
         });
         success++;
-      } catch {
+      } catch (err: unknown) {
         failed++;
+        if (!firstError) {
+          const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+          if (typeof detail === "string" && detail.trim()) {
+            firstError = detail;
+          } else if (
+            Array.isArray(detail) &&
+            typeof (detail[0] as { msg?: string } | undefined)?.msg === "string"
+          ) {
+            firstError = (detail[0] as { msg?: string }).msg ?? null;
+          }
+        }
       }
     }
 
@@ -121,7 +133,9 @@ export function AttendanceGrid({ students }: { students: Student[] }) {
     } else {
       toast({
         title:       "Partially saved",
-        description: `${success} saved, ${failed} failed`,
+        description: firstError
+          ? `${success} saved, ${failed} failed. ${firstError}`
+          : `${success} saved, ${failed} failed`,
         variant:     "destructive",
       });
     }

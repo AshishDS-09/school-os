@@ -252,3 +252,106 @@ def test_student_creation_succeeds_even_if_cache_invalidate_fails(client, monkey
         },
     )
     assert student_response.status_code == 201
+
+
+def test_attendance_mark_succeeds_even_if_cache_invalidate_fails(client, monkeypatch):
+    token = register_school(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    class_response = client.post(
+        "/api/classes",
+        headers=headers,
+        json={
+            "grade": "5",
+            "section": "A",
+            "academic_year": "2026-27",
+        },
+    )
+    assert class_response.status_code == 201
+    class_id = class_response.json()["id"]
+
+    student_response = client.post(
+        "/api/students",
+        headers=headers,
+        json={
+            "class_id": class_id,
+            "first_name": "Attend",
+            "last_name": "Safe",
+            "roll_number": "501",
+        },
+    )
+    assert student_response.status_code == 201
+    student_id = student_response.json()["id"]
+
+    async def fail_cache_invalidate(_: str):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(
+        "app.api.attendance.cache_invalidate",
+        fail_cache_invalidate
+    )
+
+    response = client.post(
+        "/api/attendance",
+        headers=headers,
+        json={
+            "student_id": student_id,
+            "class_id": class_id,
+            "date": "2026-04-08",
+            "status": "present",
+        },
+    )
+    assert response.status_code == 201
+
+
+def test_marks_create_succeeds_even_if_cache_invalidate_fails(client, monkeypatch):
+    token = register_school(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    class_response = client.post(
+        "/api/classes",
+        headers=headers,
+        json={
+            "grade": "5",
+            "section": "B",
+            "academic_year": "2026-27",
+        },
+    )
+    assert class_response.status_code == 201
+    class_id = class_response.json()["id"]
+
+    student_response = client.post(
+        "/api/students",
+        headers=headers,
+        json={
+            "class_id": class_id,
+            "first_name": "Marks",
+            "last_name": "Safe",
+            "roll_number": "502",
+        },
+    )
+    assert student_response.status_code == 201
+    student_id = student_response.json()["id"]
+
+    async def fail_cache_invalidate(_: str):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(
+        "app.api.marks.cache_invalidate",
+        fail_cache_invalidate
+    )
+
+    response = client.post(
+        "/api/marks",
+        headers=headers,
+        json={
+            "student_id": student_id,
+            "class_id": class_id,
+            "subject": "Mathematics",
+            "exam_type": "unit_test",
+            "exam_date": "2026-04-08",
+            "score": 45,
+            "max_score": 100,
+        },
+    )
+    assert response.status_code == 201

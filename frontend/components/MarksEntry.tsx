@@ -129,9 +129,17 @@ export function MarksEntry({ students }: { students: Student[] }) {
 
       qc.invalidateQueries({ queryKey: ["marks"] });
       reset();
-    } catch {
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      const message =
+        typeof detail === "string" && detail.trim()
+          ? detail
+          : Array.isArray(detail) && typeof (detail[0] as { msg?: string } | undefined)?.msg === "string"
+          ? ((detail[0] as { msg?: string }).msg as string)
+          : "Failed to save marks.";
       toast({
         title:   "Failed to save",
+        description: message,
         variant: "destructive",
       });
     } finally {
