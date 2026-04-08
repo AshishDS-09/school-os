@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
+import logging
 
 from app.core.database import get_db
 from app.core.security import get_current_school_id, TeacherOrAdmin
@@ -16,6 +17,7 @@ from app.services.cache_service import (
 )
 
 router = APIRouter(prefix="/api/students", tags=["Students"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=List[StudentResponse])
@@ -39,9 +41,12 @@ async def list_students(
     cache_key = make_cache_key("students", school_id, class_id or "all", is_active)
 
     # Try cache first
-    cached = await cache_get(cache_key)
-    if cached:
-        return cached
+    try:
+        cached = await cache_get(cache_key)
+        if cached:
+            return cached
+    except Exception as exc:
+        logger.warning("Cache read failed for key %s: %s", cache_key, exc)
 
     # Cache miss — hit the database
     query = db.query(Student).filter(Student.school_id == school_id)
@@ -60,7 +65,10 @@ async def list_students(
     result = [StudentResponse.from_orm(s).model_dump() for s in students]
 
     # Store in cache
-    await cache_set(cache_key, result, CACHE_TTL["student_list"])
+    try:
+        await cache_set(cache_key, result, CACHE_TTL["student_list"])
+    except Exception as exc:
+        logger.warning("Cache write failed for key %s: %s", cache_key, exc)
 
     return result
 
@@ -128,7 +136,10 @@ async def create_student(
         )
 
     # Invalidate cached student lists for this school
-    await cache_invalidate(f"students:{school_id}:*")
+    try:
+        await cache_invalidate(f"students:{school_id}:*")
+    except Exception as exc:
+        logger.warning("Cache invalidate failed for school_id=%s: %s", school_id, exc)
 
     return student
 
@@ -174,7 +185,10 @@ async def update_student(
         )
 
     # Clear all cached student data for this school
-    await cache_invalidate(f"students:{school_id}:*")
+    try:
+        await cache_invalidate(f"students:{school_id}:*")
+    except Exception as exc:
+        logger.warning("Cache invalidate failed for school_id=%s: %s", school_id, exc)
 
     return student
 
@@ -201,5 +215,8 @@ async def deactivate_student(
 
     student.is_active = False
     db.commit()
-    await cache_invalidate(f"students:{school_id}:*")
+    try:
+        await cache_invalidate(f"students:{school_id}:*")
+    except Exception as exc:
+        logger.warning("Cache invalidate failed for school_id=%s: %s", school_id, exc)
     return {"message": f"Student {student.full_name} deactivated successfully"}

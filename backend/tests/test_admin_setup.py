@@ -215,3 +215,40 @@ def test_student_creation_rejects_non_parent_account_link(client):
     )
     assert student_response.status_code == 400
     assert student_response.json()["detail"] == "Selected parent account was not found."
+
+
+def test_student_creation_succeeds_even_if_cache_invalidate_fails(client, monkeypatch):
+    token = register_school(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    class_response = client.post(
+        "/api/classes",
+        headers=headers,
+        json={
+            "grade": "7",
+            "section": "D",
+            "academic_year": "2026-27",
+        },
+    )
+    assert class_response.status_code == 201
+    class_id = class_response.json()["id"]
+
+    async def fail_cache_invalidate(_: str):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(
+        "app.api.students.cache_invalidate",
+        fail_cache_invalidate
+    )
+
+    student_response = client.post(
+        "/api/students",
+        headers=headers,
+        json={
+            "class_id": class_id,
+            "first_name": "Cache",
+            "last_name": "Safe",
+            "roll_number": "77",
+        },
+    )
+    assert student_response.status_code == 201
