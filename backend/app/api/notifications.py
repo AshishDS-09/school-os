@@ -26,6 +26,24 @@ class NotificationResponse(BaseModel):
         from_attributes = True
 
 
+@router.post("/send-whatsapp")
+async def send_teacher_whatsapp(
+    payload: dict,
+    db: Session = Depends(get_db),
+    school_id: int = Depends(get_current_school_id),
+):
+    \"\"\"Direct WhatsApp from Teacher Panel.\"\"\"
+    to_phone = payload.get("phone")
+    message = payload.get("message")
+    if not to_phone or not message:
+        raise HTTPException(status_code=400, detail="Missing 'phone' or 'message'")
+    from app.services.notification_service import send_whatsapp
+    result = send_whatsapp(to_phone=to_phone, message=message)
+    if result["success"]:
+        return {"success": True, "sid": result.get("sid")}
+    from fastapi import HTTPException
+    raise HTTPException(status_code=400, detail=result["error"])
+
 @router.get("", response_model=List[NotificationResponse])
 def list_notifications(
     recipient_id: Optional[int]    = Query(None),

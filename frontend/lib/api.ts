@@ -52,7 +52,7 @@ api.interceptors.response.use(
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 // ── Typed API functions ───────────────────────────────────────────
@@ -73,9 +73,9 @@ export const authApi = {
 };
 
 export const studentsApi = {
-  list:   (params?: { class_id?: number; is_active?: boolean }) =>
+  list: (params?: { class_id?: number; is_active?: boolean }) =>
     api.get("/api/students", { params }),
-  get:    (id: number) => api.get(`/api/students/${id}`),
+  get: (id: number) => api.get(`/api/students/${id}`),
   create: (data: unknown) => api.post("/api/students", data),
   update: (id: number, data: unknown) => api.put(`/api/students/${id}`, data),
 };
@@ -92,6 +92,7 @@ export const usersApi = {
 
 export const attendanceApi = {
   mark: (data: unknown) => api.post("/api/attendance", data),
+  bulkMark: (data: unknown) => api.post("/api/attendance/bulk", data),
   list: (params?: {
     student_id?: number;
     class_id?: number;
@@ -102,12 +103,12 @@ export const attendanceApi = {
 
 export const marksApi = {
   enter: (data: unknown) => api.post("/api/marks", data),
-  list:  (params?: { student_id?: number; subject?: string }) =>
+  list: (params?: { student_id?: number; subject?: string }) =>
     api.get("/api/marks", { params }),
 };
 
 export const feesApi = {
-  list:   (params?: { student_id?: number; status?: string }) =>
+  list: (params?: { student_id?: number; status?: string }) =>
     api.get("/api/fees", { params }),
   create: (data: unknown) => api.post("/api/fees", data),
   update: (id: number, data: unknown) => api.patch(`/api/fees/${id}`, data),
@@ -137,7 +138,9 @@ export interface ParentStudent {
   roll_number: string;
 }
 
-function parseParentStudent(record: StudentRecord | undefined): ParentStudent | null {
+function parseParentStudent(
+  record: StudentRecord | undefined,
+): ParentStudent | null {
   if (!record) return null;
 
   const id = getNumberField(record, ["id"]);
@@ -179,7 +182,11 @@ function getNumberField(record: StudentRecord, keys: string[]): number | null {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value))) {
+    if (
+      typeof value === "string" &&
+      value.trim() !== "" &&
+      !Number.isNaN(Number(value))
+    ) {
       return Number(value);
     }
   }
@@ -198,7 +205,10 @@ function getStringField(record: StudentRecord, keys: string[]): string | null {
   return null;
 }
 
-function matchStudentToParent(student: StudentRecord, parent: ParentIdentity): boolean {
+function matchStudentToParent(
+  student: StudentRecord,
+  parent: ParentIdentity,
+): boolean {
   const parentUserId = parent.user_id;
   const parentEmail = parent.email?.trim().toLowerCase();
 
@@ -241,7 +251,9 @@ export const parentApi = {
         return null;
       }
 
-      const match = students.find((student) => matchStudentToParent(student, parent));
+      const match = students.find((student) =>
+        matchStudentToParent(student, parent),
+      );
       return parseParentStudent(match);
     }),
   getAttendance: (studentId: number, fromDate: string) =>
@@ -251,24 +263,20 @@ export const parentApi = {
   getMarks: (studentId: number) =>
     api.get("/api/marks", { params: { student_id: studentId } }),
   getFees: (studentId: number) =>
-    api.get("/api/fees",  { params: { student_id: studentId } }),
+    api.get("/api/fees", { params: { student_id: studentId } }),
   getNotifications: (recipientId: number) =>
     api.get("/api/notifications", { params: { recipient_id: recipientId } }),
 };
 // Add to frontend/lib/api.ts
 
 export const financeApi = {
-  allFees:     (params?: { status?: string }) =>
-    api.get("/api/fees", { params }),
-  updateFee:   (id: number, data: unknown) =>
-    api.patch(`/api/fees/${id}`, data),
+  allFees: (params?: { status?: string }) => api.get("/api/fees", { params }),
+  updateFee: (id: number, data: unknown) => api.patch(`/api/fees/${id}`, data),
 };
 // Add to frontend/lib/api.ts
 
 export const leadsApi = {
-  list:   (params?: { status?: string }) =>
-    api.get("/api/leads", { params }),
+  list: (params?: { status?: string }) => api.get("/api/leads", { params }),
   create: (data: unknown) => api.post("/api/leads", data),
-  update: (id: number, data: unknown) =>
-    api.patch(`/api/leads/${id}`, data),
+  update: (id: number, data: unknown) => api.patch(`/api/leads/${id}`, data),
 };

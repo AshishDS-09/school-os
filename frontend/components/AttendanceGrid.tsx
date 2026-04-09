@@ -81,30 +81,27 @@ export function AttendanceGrid({ students }: { students: Student[] }) {
     let failed  = 0;
     let firstError: string | null = null;
 
-    // Submit one by one — API processes them sequentially
-    for (const student of students) {
-      try {
-        await attendanceApi.mark({
-          student_id: student.id,
-          class_id:   student.class_id,
-          date:       today,
-          status:     attendance[student.id] ?? "present",
-        });
-        success++;
-      } catch (err: unknown) {
-        failed++;
-        if (!firstError) {
-          const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-          if (typeof detail === "string" && detail.trim()) {
-            firstError = detail;
-          } else if (
-            Array.isArray(detail) &&
-            typeof (detail[0] as { msg?: string } | undefined)?.msg === "string"
-          ) {
-            firstError = (detail[0] as { msg?: string }).msg ?? null;
-          }
-        }
-      }
+    // Bulk submit - fast parallel
+    const records = students.map(student => ({
+      student_id: student.id,
+      class_id: student.class_id,
+      date: today,
+      status: attendance[student.id] ?? "present" as const,
+    }));
+    
+    try {
+      const result = await attendanceApi.bulkMark({
+        records,
+        class_id: students[0]?.class_id || 0,
+        date: today
+      });
+      success = result.success;
+      failed = result.total - success;
+      if (result.errors.length > 0) firstError = result.errors[0];
+    } catch (err: unknown) {
+      failed = students.length;
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      firstError = typeof detail === "string" ? detail : "Bulk save failed";
     }
 
     setSubmitting(false);
