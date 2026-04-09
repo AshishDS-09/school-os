@@ -58,7 +58,7 @@ async def mark_bulk_attendance(
     current_user: User = Depends(get_current_user),
     _=TeacherOrAdmin
 ):
-    \"\"\"Bulk mark attendance for entire class - 10x faster.\"\"\"
+    """Bulk mark attendance for entire class - 10x faster."""
     errors = []
     success = 0
     class_obj = db.query(Class_).filter(Class_.id == payload.class_id, Class_.school_id == school_id).first()
