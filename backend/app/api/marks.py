@@ -16,6 +16,7 @@ from app.models.marks import Marks, ExamType
 from app.models.student import Student
 from app.models.user import User
 from app.services.cache_service import cache_invalidate
+from app.events.publisher import publish_event, Events
 
 router = APIRouter(prefix="/api/marks", tags=["Marks"])
 logger = logging.getLogger(__name__)
