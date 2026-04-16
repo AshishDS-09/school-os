@@ -1,6 +1,6 @@
 # backend/app/api/notifications.py
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -32,7 +32,7 @@ async def send_teacher_whatsapp(
     db: Session = Depends(get_db),
     school_id: int = Depends(get_current_school_id),
 ):
-    \"\"\"Direct WhatsApp from Teacher Panel.\"\"\"
+    """Direct WhatsApp from Teacher Panel."""
     to_phone = payload.get("phone")
     message = payload.get("message")
     if not to_phone or not message:
@@ -41,7 +41,6 @@ async def send_teacher_whatsapp(
     result = send_whatsapp(to_phone=to_phone, message=message)
     if result["success"]:
         return {"success": True, "sid": result.get("sid")}
-    from fastapi import HTTPException
     raise HTTPException(status_code=400, detail=result["error"])
 
 @router.get("", response_model=List[NotificationResponse])
