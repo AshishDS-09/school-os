@@ -83,7 +83,6 @@ export function AttendanceGrid({ students }: { students: Student[] }) {
 
     const records = students.map((student) => ({
       student_id: student.id,
-      class_id: student.class_id,
       date: today,
       status: (attendance[student.id] ?? "present") as AttendanceStatus,
     }));

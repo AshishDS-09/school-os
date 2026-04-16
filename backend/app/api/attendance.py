@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 class AttendanceMarkRequest(BaseModel):
     student_id: int
-    class_id: int
     date: date
     status: AttendanceStatus
     notes: Optional[str] = None
+    # Note: class_id is taken from BulkAttendanceRequest.class_id, not per-record
 
 class AttendanceResponse(BaseModel):
     id: int
@@ -66,26 +66,48 @@ async def mark_bulk_attendance(
         raise HTTPException(status_code=400, detail="Class not found")
     
     for rec in payload.records:
-        student = db.query(Student).filter(Student.id == rec.student_id, Student.school_id == school_id, Student.class_id == payload.class_id).first()
-        if not student:
-            errors.append(f"Student {rec.student_id} not in class")
+        try:
+            student = db.query(Student).filter(
+                Student.id == rec.student_id,
+                Student.school_id == school_id
+            ).first()
+            if not student:
+                errors.append(f"Student {rec.student_id} not found in your school")
+                continue
+            
+            existing = db.query(Attendance).filter(
+                Attendance.student_id == rec.student_id,
+                Attendance.date == payload.date,
+                Attendance.school_id == school_id
+            ).first()
+            
+            if existing:
+                existing.status = rec.status
+                existing.notes = rec.notes
+            else:
+                # Use payload.class_id not rec.class_id to ensure consistency
+                att = Attendance(
+                    school_id=school_id,
+                    student_id=rec.student_id,
+                    class_id=payload.class_id,  # Use the class from payload, not the record
+                    marked_by=current_user.id,
+                    date=payload.date,
+                    status=rec.status,
+                    notes=rec.notes
+                )
+                db.add(att)
+            success += 1
+        except Exception as e:
+            errors.append(f"Student {rec.student_id}: {str(e)}")
+            db.rollback()
             continue
-        
-        existing = db.query(Attendance).filter(
-            Attendance.student_id == rec.student_id,
-            Attendance.date == payload.date,
-            Attendance.school_id == school_id
-        ).first()
-        
-        if existing:
-            existing.status = rec.status
-            existing.notes = rec.notes
-        else:
-            att = Attendance(school_id=school_id, marked_by=current_user.id, **rec.model_dump())
-            db.add(att)
-        success += 1
     
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        errors.append(f"Database error: {str(e)}")
+        return BulkAttendanceResponse(success=0, total=len(payload.records), errors=errors)
     
     # Background tasks
     asyncio.create_task(cache_invalidate(f"attendance:{school_id}:*"))
