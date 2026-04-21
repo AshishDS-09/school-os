@@ -1,6 +1,8 @@
 # backend/Procfile
-
-web: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
-worker: celery -A app.tasks worker --loglevel=info --pool=solo --concurrency=2
-beat: celery -A app.tasks beat --loglevel=info
-eventsub: python -m app.events.subscriber
+#
+# Route startup through the shared entrypoint so platforms that prefer Procfile
+# over Docker CMD/ENTRYPOINT still honor PROCESS_TYPE and shell-based $PORT expansion.
+web: sh entrypoint.sh
+worker: sh entrypoint.sh worker
+beat: sh entrypoint.sh beat
+eventsub: sh entrypoint.sh events
